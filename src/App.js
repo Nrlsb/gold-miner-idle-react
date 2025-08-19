@@ -139,7 +139,7 @@ export default function App() {
         
         setGameState(loadedState);
 
-    }, [recalculateValues]); // recalculateValues is stable, so this effectively runs once
+    }, [recalculateValues]);
     
     // Effect to inject Tailwind CSS script
     React.useEffect(() => {
@@ -171,13 +171,23 @@ export default function App() {
         }
     }, [gameState.generators, gameState.purchasedUpgrades, gameState.prestigeGems, gameState.gpsMultiplier, recalculateValues]);
 
-    // Save game state to localStorage
+    // --- NEW SAVE LOGIC ---
+    // A ref to hold the latest game state, accessible inside setInterval
+    const gameStateRef = React.useRef(gameState);
     React.useEffect(() => {
-        const saveTimeout = setTimeout(() => {
-            localStorage.setItem(SAVE_KEY, JSON.stringify({ ...gameState, lastSaveTimestamp: Date.now() }));
-        }, 1000);
-        return () => clearTimeout(saveTimeout);
+        gameStateRef.current = gameState;
     }, [gameState]);
+
+    // This effect sets up a reliable interval for saving the game
+    React.useEffect(() => {
+        const saveInterval = setInterval(() => {
+            const currentState = gameStateRef.current;
+            localStorage.setItem(SAVE_KEY, JSON.stringify({ ...currentState, lastSaveTimestamp: Date.now() }));
+        }, 3000); // Save every 3 seconds
+
+        return () => clearInterval(saveInterval); // Cleanup on unmount
+    }, []); // Empty array ensures this runs only once
+
 
     return (
         <>
@@ -192,7 +202,6 @@ export default function App() {
                 <div key={num.id} className="floating-number" style={{ left: num.x, top: num.y }}>{num.value}</div>
             ))}
             
-            {/* Offline Earnings Modal */}
             {offlineEarnings && (
                 <div className="modal-backdrop fixed inset-0 bg-black/60 flex items-center justify-center z-50">
                     <div className="bg-gray-800 rounded-xl p-8 text-center space-y-4 border border-yellow-400 shadow-lg">
@@ -305,4 +314,4 @@ export default function App() {
             </div>
         </>
     );
-                        }
+}
