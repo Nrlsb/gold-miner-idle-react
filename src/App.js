@@ -1,8 +1,10 @@
 import React from 'react';
 
 // --- Definitions ---
-const SAVE_KEY = 'goldMinerIdleSave_React';
+const SAVE_KEY = 'goldMinerIdleSave_React_v2'; // Updated save key for the new version
 const PRESTIGE_REQUIREMENT = 1000000;
+
+// --- Game Data ---
 
 const generatorTypes = [
     { id: 'miner', name: 'Minero Automático', description: 'Genera una pequeña cantidad de oro.', baseCost: 10, baseGps: 0.1, costMultiplier: 1.15 },
@@ -15,6 +17,15 @@ const upgradeTypes = [
     { id: 'quality_gears', name: 'Engranajes de Calidad', description: 'Aumenta la producción de todos los generadores un 10%.', cost: 500, type: 'gps_multiplier', value: 1.10 }
 ];
 
+// NEW: Skill Tree Definitions
+const skillTypes = [
+    { id: 'efficient_miners', name: 'Minería Eficiente', description: 'Los Mineros Automáticos producen un 25% más de oro.', cost: 1, type: 'generator_bonus', target: 'miner', value: 1.25 },
+    { id: 'powerful_clicks', name: 'Clics Potenciados', description: 'Aumenta el oro por clic en un 50%.', cost: 2, type: 'click_bonus', value: 1.5 },
+    { id: 'gem_hoarder', name: 'Acumulador de Gemas', description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.', cost: 5, type: 'prestige_bonus', value: 1 },
+    { id: 'compound_interest', name: 'Interés Compuesto', description: 'Gana un 0.01% de tu oro actual por segundo.', cost: 10, type: 'interest_bonus', value: 0.0001 }
+];
+
+
 // --- Helper Functions ---
 const getNewGameState = () => ({
     gold: 0,
@@ -24,7 +35,9 @@ const getNewGameState = () => ({
     generators: {},
     purchasedUpgrades: [],
     prestigeGems: 0,
-    lastSaveTimestamp: Date.now(), // Add timestamp for offline progress
+    sciencePoints: 0, // NEW: Research points currency
+    purchasedSkills: [], // NEW: Tracks purchased skills
+    lastSaveTimestamp: Date.now(),
 });
 
 // --- Main App Component ---
@@ -38,20 +51,41 @@ export default function App() {
     const prestigeBonus = React.useMemo(() => 1 + (gameState.prestigeGems * 0.05), [gameState.prestigeGems]);
     const gemsToGain = React.useMemo(() => {
         if (gameState.gold < PRESTIGE_REQUIREMENT) return 0;
-        return Math.floor(Math.sqrt(gameState.gold / PRESTIGE_REQUIREMENT)) * 5;
-    }, [gameState.gold]);
+        let gems = Math.floor(Math.sqrt(gameState.gold / PRESTIGE_REQUIREMENT)) * 5;
+        if (gameState.purchasedSkills.includes('gem_hoarder')) {
+            gems += skillTypes.find(s => s.id === 'gem_hoarder').value;
+        }
+        return gems;
+    }, [gameState.gold, gameState.purchasedSkills]);
+    const scienceToGain = React.useMemo(() => gemsToGain > 0 ? Math.floor(gemsToGain / 5) : 0, [gemsToGain]);
 
     // --- Game Logic Functions ---
     const recalculateValues = React.useCallback((currentState) => {
         const currentPrestigeBonus = 1 + (currentState.prestigeGems * 0.05);
+
+        // Gold Per Click Calculation
         let baseGpc = currentState.purchasedUpgrades.includes('reinforced_pick') ? upgradeTypes.find(u => u.id === 'reinforced_pick').value : 1;
+        if (currentState.purchasedSkills.includes('powerful_clicks')) {
+            baseGpc *= skillTypes.find(s => s.id === 'powerful_clicks').value;
+        }
         const goldPerClick = baseGpc * currentPrestigeBonus;
 
+        // Gold Per Second Calculation
         let baseGps = 0;
         for (const type of generatorTypes) {
-            baseGps += (currentState.generators[type.id] || 0) * type.baseGps;
+            let generatorProduction = (currentState.generators[type.id] || 0) * type.baseGps;
+            // Apply skill bonus if applicable
+            if (currentState.purchasedSkills.includes('efficient_miners') && type.id === 'miner') {
+                generatorProduction *= skillTypes.find(s => s.id === 'efficient_miners').value;
+            }
+            baseGps += generatorProduction;
         }
-        const goldPerSecond = (baseGps * currentState.gpsMultiplier) * currentPrestigeBonus;
+        let goldPerSecond = (baseGps * currentState.gpsMultiplier) * currentPrestigeBonus;
+        
+        // Apply interest bonus
+        if (currentState.purchasedSkills.includes('compound_interest')) {
+            goldPerSecond += currentState.gold * skillTypes.find(s => s.id === 'compound_interest').value;
+        }
 
         return { goldPerClick, goldPerSecond };
     }, []);
@@ -96,15 +130,32 @@ export default function App() {
             gpsMultiplier: upgrade.type === 'gps_multiplier' ? prev.gpsMultiplier * upgrade.value : prev.gpsMultiplier,
         }));
     };
+    
+    // NEW: Buy Skill function
+    const buySkill = (skillId) => {
+        const skill = skillTypes.find(s => s.id === skillId);
+        if (!skill || gameState.purchasedSkills.includes(skillId) || gameState.sciencePoints < skill.cost) return;
+        setGameState(prev => ({
+            ...prev,
+            sciencePoints: prev.sciencePoints - skill.cost,
+            purchasedSkills: [...prev.purchasedSkills, skillId],
+        }));
+    };
 
     const prestige = () => {
-        if (gemsToGain > 0 && window.confirm(`¿Quieres hacer prestigio por ${gemsToGain} gemas? Tu progreso actual se reiniciará.`)) {
-            setGameState(prev => ({ ...getNewGameState(), prestigeGems: prev.prestigeGems + gemsToGain }));
+        if (gemsToGain > 0 && window.confirm(`¿Quieres hacer prestigio por ${gemsToGain} gemas y ${scienceToGain} Puntos de Ciencia? Tu progreso actual se reiniciará.`)) {
+            setGameState(prev => {
+                const newState = getNewGameState();
+                newState.prestigeGems = prev.prestigeGems + gemsToGain;
+                newState.sciencePoints = prev.sciencePoints + scienceToGain;
+                newState.purchasedSkills = prev.purchasedSkills; // Skills are permanent
+                return newState;
+            });
         }
     };
 
     const hardReset = () => {
-        if (window.confirm("¿Estás seguro de que quieres reiniciar TODO tu progreso? Se perderán incluso las gemas de prestigio.")) {
+        if (window.confirm("¿Estás seguro de que quieres reiniciar TODO tu progreso? Se perderán incluso las gemas y la ciencia.")) {
             localStorage.removeItem(SAVE_KEY);
             setGameState(getNewGameState());
         }
@@ -112,7 +163,6 @@ export default function App() {
 
     // --- Effects ---
     
-    // Effect for loading game and calculating offline progress (runs only once on mount)
     React.useEffect(() => {
         let loadedState = getNewGameState();
         try {
@@ -141,7 +191,6 @@ export default function App() {
 
     }, [recalculateValues]);
     
-    // Effect to inject Tailwind CSS script
     React.useEffect(() => {
         const scriptId = 'tailwind-script';
         if (!document.getElementById(scriptId)) {
@@ -153,40 +202,32 @@ export default function App() {
         }
     }, []);
 
-    // Game loop for passive gold generation
     React.useEffect(() => {
         const gameTick = setInterval(() => {
-            if (gameState.goldPerSecond > 0) {
-                setGameState(prev => ({ ...prev, gold: prev.gold + prev.goldPerSecond / 10 }));
-            }
+            setGameState(prev => ({ ...prev, gold: prev.gold + prev.goldPerSecond / 10 }));
         }, 100);
         return () => clearInterval(gameTick);
     }, [gameState.goldPerSecond]);
 
-    // Recalculate derived values when dependencies change
     React.useEffect(() => {
         const { goldPerClick, goldPerSecond } = recalculateValues(gameState);
         if (goldPerClick !== gameState.goldPerClick || goldPerSecond !== gameState.goldPerSecond) {
             setGameState(prev => ({ ...prev, goldPerClick, goldPerSecond }));
         }
-    }, [gameState.generators, gameState.purchasedUpgrades, gameState.prestigeGems, gameState.gpsMultiplier, recalculateValues]);
+    }, [gameState.gold, gameState.generators, gameState.purchasedUpgrades, gameState.prestigeGems, gameState.gpsMultiplier, gameState.purchasedSkills, recalculateValues]);
 
-    // --- NEW SAVE LOGIC ---
-    // A ref to hold the latest game state, accessible inside setInterval
     const gameStateRef = React.useRef(gameState);
     React.useEffect(() => {
         gameStateRef.current = gameState;
     }, [gameState]);
 
-    // This effect sets up a reliable interval for saving the game
     React.useEffect(() => {
         const saveInterval = setInterval(() => {
             const currentState = gameStateRef.current;
             localStorage.setItem(SAVE_KEY, JSON.stringify({ ...currentState, lastSaveTimestamp: Date.now() }));
-        }, 3000); // Save every 3 seconds
-
-        return () => clearInterval(saveInterval); // Cleanup on unmount
-    }, []); // Empty array ensures this runs only once
+        }, 3000);
+        return () => clearInterval(saveInterval);
+    }, []);
 
 
     return (
@@ -214,44 +255,56 @@ export default function App() {
             )}
 
             <div className="bg-gradient-to-b from-gray-900 to-gray-800 text-white flex items-start justify-center min-h-screen py-8 font-sans">
-                <div className="w-full max-w-md mx-auto bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 md:p-8 space-y-6 border border-gray-700">
-                    <div className="text-center">
-                        <h1 className="text-3xl font-bold text-yellow-400">Gold Miner Idle (React)</h1>
-                        <p className="text-gray-400">¡Conviértete en un magnate del oro!</p>
-                    </div>
-
-                    {/* Stats Display */}
-                    <div className="bg-gray-900 p-6 rounded-xl text-center border border-gray-700 sticky top-4 z-10 shadow-lg">
-                        <div className="flex justify-around items-center">
-                            <div className="flex items-center gap-3">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" /></svg>
-                                <div>
-                                    <h2 className="text-lg font-medium text-gray-400">Oro</h2>
-                                    <p className="text-2xl md:text-3xl font-bold text-white">{Math.floor(gameState.gold).toLocaleString('es')}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-purple-400" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
-                                <div>
-                                    <h2 className="text-lg font-medium text-gray-400">Gemas</h2>
-                                    <p className="text-2xl md:text-3xl font-bold text-purple-400">{gameState.prestigeGems}</p>
-                                </div>
-                            </div>
+                <div className="w-full max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 p-4">
+                    
+                    {/* Left Column (Main Game) */}
+                    <div className="lg:col-span-2 bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 space-y-6 border border-gray-700">
+                        <div className="text-center">
+                            <h1 className="text-3xl font-bold text-yellow-400">Gold Miner Idle (React)</h1>
+                            <p className="text-gray-400">¡Conviértete en un magnate del oro!</p>
                         </div>
-                        <p className="text-sm text-yellow-500 mt-2">{gameState.goldPerSecond.toFixed(1)} oro por segundo</p>
-                        <p className="text-sm text-purple-300 mt-1">Bono de prestigio: +{((prestigeBonus - 1) * 100).toFixed(0)}%</p>
-                    </div>
 
-                    <button onClick={handleManualClick} className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-xl transition transform active:scale-95 shadow-lg shadow-yellow-500/20">
-                        Picar Oro (+{Math.round(gameState.goldPerClick)})
-                    </button>
+                        {/* Stats Display */}
+                        <div className="bg-gray-900 p-6 rounded-xl border border-gray-700 sticky top-4 z-10 shadow-lg">
+                            <div className="flex justify-around items-center flex-wrap gap-4">
+                                {/* Gold */}
+                                <div className="flex items-center gap-3">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" /></svg>
+                                    <div>
+                                        <h2 className="text-lg font-medium text-gray-400">Oro</h2>
+                                        <p className="text-2xl md:text-3xl font-bold text-white">{Math.floor(gameState.gold).toLocaleString('es')}</p>
+                                    </div>
+                                </div>
+                                {/* Gems */}
+                                <div className="flex items-center gap-3">
+                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-purple-400" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                                    <div>
+                                        <h2 className="text-lg font-medium text-gray-400">Gemas</h2>
+                                        <p className="text-2xl md:text-3xl font-bold text-purple-400">{gameState.prestigeGems}</p>
+                                    </div>
+                                </div>
+                                 {/* Science Points */}
+                                <div className="flex items-center gap-3">
+                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-cyan-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>
+                                    <div>
+                                        <h2 className="text-lg font-medium text-gray-400">Ciencia</h2>
+                                        <p className="text-2xl md:text-3xl font-bold text-cyan-400">{gameState.sciencePoints}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <p className="text-sm text-yellow-500 mt-2 text-center">{gameState.goldPerSecond.toFixed(1)} oro por segundo</p>
+                            <p className="text-sm text-purple-300 mt-1 text-center">Bono de prestigio: +{((prestigeBonus - 1) * 100).toFixed(0)}%</p>
+                        </div>
 
-                    {/* Sections */}
-                    {[{title: "Mejoras", items: upgradeTypes, type: 'upgrade'}, {title: "Generadores", items: generatorTypes, type: 'generator'}].map(section => (
-                        <div key={section.title} className="space-y-2">
-                            <h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">{section.title}</h2>
+                        <button onClick={handleManualClick} className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-xl transition transform active:scale-95 shadow-lg shadow-yellow-500/20">
+                            Picar Oro (+{Math.round(gameState.goldPerClick)})
+                        </button>
+
+                        {/* Sections */}
+                        <div className="space-y-2">
+                            <h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Mejoras</h2>
                             <div className="space-y-3">
-                                {section.type === 'upgrade' && upgradeTypes.map(upgrade => {
+                                {upgradeTypes.map(upgrade => {
                                     const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id);
                                     const canAfford = gameState.gold >= upgrade.cost;
                                     return (
@@ -266,7 +319,12 @@ export default function App() {
                                         </div>
                                     );
                                 })}
-                                {section.type === 'generator' && generatorTypes.map(gen => {
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Generadores</h2>
+                            <div className="space-y-3">
+                                {generatorTypes.map(gen => {
                                     const count = gameState.generators[gen.id] || 0;
                                     const cost = gen.baseCost * Math.pow(gen.costMultiplier, count);
                                     const canAfford = gameState.gold >= cost;
@@ -290,28 +348,52 @@ export default function App() {
                                 })}
                             </div>
                         </div>
-                    ))}
-                    
-                    {/* Prestige */}
-                    <div className="space-y-2 pt-4 border-t border-gray-700">
-                        <h2 className="text-2xl font-bold text-center text-gray-300">Prestigio</h2>
-                        <div className="bg-purple-900/40 p-4 rounded-lg text-center space-y-2">
-                            <p className="text-gray-300 text-sm">Reinicia para obtener Gemas, que aumentan permanentemente tu producción de oro.</p>
-                            <p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{PRESTIGE_REQUIREMENT.toLocaleString('es')}</span> Oro</p>
-                            <button onClick={prestige} disabled={gemsToGain <= 0} className={`w-full bg-purple-600 text-white font-bold py-3 px-5 rounded-lg transition ${gemsToGain > 0 ? 'hover:bg-purple-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>
-                                Prestigio por +{gemsToGain} Gemas
+                        
+                        {/* Prestige & Reset */}
+                        <div className="space-y-2 pt-4 border-t border-gray-700">
+                            <h2 className="text-2xl font-bold text-center text-gray-300">Prestigio</h2>
+                            <div className="bg-purple-900/40 p-4 rounded-lg text-center space-y-2">
+                                <p className="text-gray-300 text-sm">Reinicia para obtener Gemas y Puntos de Ciencia, que mejoran permanentemente tu producción.</p>
+                                <p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{PRESTIGE_REQUIREMENT.toLocaleString('es')}</span> Oro</p>
+                                <button onClick={prestige} disabled={gemsToGain <= 0} className={`w-full bg-purple-600 text-white font-bold py-3 px-5 rounded-lg transition ${gemsToGain > 0 ? 'hover:bg-purple-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>
+                                    Prestigio por +{gemsToGain} Gemas y +{scienceToGain} Ciencia
+                                </button>
+                            </div>
+                        </div>
+                        <div className="pt-4 border-t border-gray-700">
+                            <button onClick={hardReset} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">
+                                Reiniciar Partida (Hard Reset)
                             </button>
                         </div>
                     </div>
 
-                    {/* Reset */}
-                    <div className="pt-4 border-t border-gray-700">
-                        <button onClick={hardReset} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">
-                            Reiniciar Partida (Hard Reset)
-                        </button>
+                    {/* Right Column (Skill Tree) */}
+                    <div className="lg:col-span-1 bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 space-y-4 border border-gray-700 h-fit sticky top-4">
+                        <h2 className="text-2xl font-bold text-center text-cyan-400 border-b-2 border-gray-700 pb-2 mb-4">Investigación</h2>
+                        <div className="space-y-3">
+                            {skillTypes.map(skill => {
+                                const isPurchased = gameState.purchasedSkills.includes(skill.id);
+                                const canAfford = gameState.sciencePoints >= skill.cost;
+                                return (
+                                    <div key={skill.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isPurchased ? 'bg-cyan-900/50 border-cyan-700/80' : 'bg-gray-700/50 border-gray-600'}`}>
+                                        <div className="flex-grow">
+                                            <h4 className="font-semibold text-cyan-300">{skill.name}</h4>
+                                            <p className="text-xs text-gray-400 mt-1">{skill.description}</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => buySkill(skill.id)} 
+                                            disabled={isPurchased || !canAfford} 
+                                            className={`w-full mt-3 bg-cyan-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-cyan-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}
+                                        >
+                                            {isPurchased ? 'Comprado' : `Costo: ${skill.cost} Ciencia`}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             </div>
         </>
     );
-}
+            }
