@@ -1,7 +1,8 @@
 import React from 'react';
 
 // --- Definitions ---
-const SAVE_KEY = 'goldMinerIdleSave_React_v2'; // Updated save key for the new version
+const OLD_SAVE_KEY = 'goldMinerIdleSave_React'; // Previous save key
+const SAVE_KEY = 'goldMinerIdleSave_React_v2'; // New save key for the new version
 const PRESTIGE_REQUIREMENT = 1000000;
 
 // --- Game Data ---
@@ -17,7 +18,6 @@ const upgradeTypes = [
     { id: 'quality_gears', name: 'Engranajes de Calidad', description: 'Aumenta la producción de todos los generadores un 10%.', cost: 500, type: 'gps_multiplier', value: 1.10 }
 ];
 
-// NEW: Skill Tree Definitions
 const skillTypes = [
     { id: 'efficient_miners', name: 'Minería Eficiente', description: 'Los Mineros Automáticos producen un 25% más de oro.', cost: 1, type: 'generator_bonus', target: 'miner', value: 1.25 },
     { id: 'powerful_clicks', name: 'Clics Potenciados', description: 'Aumenta el oro por clic en un 50%.', cost: 2, type: 'click_bonus', value: 1.5 },
@@ -35,8 +35,8 @@ const getNewGameState = () => ({
     generators: {},
     purchasedUpgrades: [],
     prestigeGems: 0,
-    sciencePoints: 0, // NEW: Research points currency
-    purchasedSkills: [], // NEW: Tracks purchased skills
+    sciencePoints: 0,
+    purchasedSkills: [],
     lastSaveTimestamp: Date.now(),
 });
 
@@ -131,7 +131,6 @@ export default function App() {
         }));
     };
     
-    // NEW: Buy Skill function
     const buySkill = (skillId) => {
         const skill = skillTypes.find(s => s.id === skillId);
         if (!skill || gameState.purchasedSkills.includes(skillId) || gameState.sciencePoints < skill.cost) return;
@@ -148,7 +147,7 @@ export default function App() {
                 const newState = getNewGameState();
                 newState.prestigeGems = prev.prestigeGems + gemsToGain;
                 newState.sciencePoints = prev.sciencePoints + scienceToGain;
-                newState.purchasedSkills = prev.purchasedSkills; // Skills are permanent
+                newState.purchasedSkills = prev.purchasedSkills;
                 return newState;
             });
         }
@@ -157,17 +156,34 @@ export default function App() {
     const hardReset = () => {
         if (window.confirm("¿Estás seguro de que quieres reiniciar TODO tu progreso? Se perderán incluso las gemas y la ciencia.")) {
             localStorage.removeItem(SAVE_KEY);
+            localStorage.removeItem(OLD_SAVE_KEY); // Also remove old save file
             setGameState(getNewGameState());
         }
     };
 
     // --- Effects ---
     
+    // Effect for loading game, handling migration, and calculating offline progress
     React.useEffect(() => {
         let loadedState = getNewGameState();
         try {
-            const savedData = localStorage.getItem(SAVE_KEY);
+            // --- MIGRATION LOGIC ---
+            // Try to load from the new save key first
+            let savedData = localStorage.getItem(SAVE_KEY);
+            
+            // If no new save, try to load from the old key
+            if (!savedData) {
+                const oldSavedData = localStorage.getItem(OLD_SAVE_KEY);
+                if (oldSavedData) {
+                    console.log("Old save file found, migrating...");
+                    savedData = oldSavedData;
+                    // Important: Remove the old save file to prevent re-migration on next load
+                    localStorage.removeItem(OLD_SAVE_KEY);
+                }
+            }
+            
             if (savedData) {
+                // Merge saved data with the new game state structure to ensure new fields exist
                 loadedState = { ...getNewGameState(), ...JSON.parse(savedData) };
             }
         } catch (error) {
@@ -204,10 +220,14 @@ export default function App() {
 
     React.useEffect(() => {
         const gameTick = setInterval(() => {
-            setGameState(prev => ({ ...prev, gold: prev.gold + prev.goldPerSecond / 10 }));
+            // Use a functional update to ensure we're always working with the latest state
+            setGameState(prev => {
+                 const { goldPerSecond } = recalculateValues(prev);
+                 return { ...prev, gold: prev.gold + goldPerSecond / 10 };
+            });
         }, 100);
         return () => clearInterval(gameTick);
-    }, [gameState.goldPerSecond]);
+    }, [recalculateValues]); // recalculateValues is stable
 
     React.useEffect(() => {
         const { goldPerClick, goldPerSecond } = recalculateValues(gameState);
@@ -224,6 +244,7 @@ export default function App() {
     React.useEffect(() => {
         const saveInterval = setInterval(() => {
             const currentState = gameStateRef.current;
+            // Always save to the NEW key
             localStorage.setItem(SAVE_KEY, JSON.stringify({ ...currentState, lastSaveTimestamp: Date.now() }));
         }, 3000);
         return () => clearInterval(saveInterval);
@@ -396,4 +417,4 @@ export default function App() {
             </div>
         </>
     );
-            }
+        }
