@@ -11,14 +11,19 @@ const generatorTypes = [
     { id: 'miner', name: 'Minero Automático', description: 'Genera una pequeña cantidad de oro.', baseCost: 10, baseGps: 0.1, costMultiplier: 1.15 },
     { id: 'cart', name: 'Carreta de Mina', description: 'Transporta más oro desde la mina.', baseCost: 100, baseGps: 1, costMultiplier: 1.20 },
     { id: 'excavator', name: 'Excavadora', description: 'Extrae enormes cantidades de oro.', baseCost: 1200, baseGps: 8, costMultiplier: 1.25 },
-    // NEW: Geologist Generator
     { id: 'geologist', name: 'Geólogo', description: 'Busca recursos automáticamente.', baseCost: 5000, costMultiplier: 1.30, baseRps: { iron: 0.1, coal: 0.05, diamond: 0.001 } }
 ];
 
+// --- UPDATED: More upgrades with clearer descriptions ---
 const upgradeTypes = [
-    { id: 'reinforced_pick', name: 'Pico Reforzado', description: 'Aumenta el oro por clic a 5.', cost: 200, type: 'click', value: 5 },
-    { id: 'quality_gears', name: 'Engranajes de Calidad', description: 'Aumenta la producción de todos los generadores un 10%.', cost: 500, type: 'gps_multiplier', value: 1.10 }
+    { id: 'miner_gloves', name: 'Guantes de Minero', description: '+1 al oro por clic base.', cost: 50, type: 'click_add', value: 1 },
+    { id: 'reinforced_pick', name: 'Pico Reforzado', description: '+4 al oro por clic base.', cost: 250, type: 'click_add', value: 4 },
+    { id: 'quality_gears', name: 'Engranajes de Calidad', description: '+10% a la producción de todos los generadores.', cost: 500, type: 'gps_multiplier', value: 1.10 },
+    { id: 'bigger_carts', name: 'Carretas más Grandes', description: 'Duplica la producción de las Carretas de Mina.', cost: 1000, type: 'generator_multiplier', target: 'cart', value: 2 },
+    { id: 'smart_investments', name: 'Inversiones Inteligentes', description: '+25% a la producción de todos los generadores.', cost: 5000, type: 'gps_multiplier', value: 1.25 },
+    { id: 'diamond_drills', name: 'Taladros de Diamante', description: 'Duplica la producción de las Excavadoras.', cost: 12000, type: 'generator_multiplier', target: 'excavator', value: 2 }
 ];
+
 
 const skillTypes = [
     { id: 'efficient_miners', name: 'Minería Eficiente', description: 'Los Mineros Automáticos producen un 25% más de oro.', cost: 1, type: 'generator_bonus', target: 'miner', value: 1.25 },
@@ -43,9 +48,6 @@ const artifactTypes = [
 // --- Helper Functions ---
 const getNewGameState = () => ({
     gold: 0,
-    goldPerClick: 1,
-    goldPerSecond: 0,
-    gpsMultiplier: 1.0,
     generators: {},
     purchasedUpgrades: [],
     prestigeGems: 0,
@@ -63,7 +65,67 @@ export default function App() {
     const [floatingNumbers, setFloatingNumbers] = React.useState([]);
     const [offlineEarnings, setOfflineEarnings] = React.useState(null);
 
+    // --- REFACTORED: Centralized calculation logic ---
+    const recalculateValues = React.useCallback((currentState) => {
+        const currentPrestigeBonus = 1 + (currentState.prestigeGems * 0.05);
+
+        // --- Gold Per Click Calculation ---
+        let baseGpc = 1;
+        // Add bonuses from upgrades
+        currentState.purchasedUpgrades.forEach(upgradeId => {
+            const upgrade = upgradeTypes.find(u => u.id === upgradeId);
+            if (upgrade && upgrade.type === 'click_add') {
+                baseGpc += upgrade.value;
+            }
+        });
+
+        // Apply skill and artifact multipliers
+        if (currentState.purchasedSkills.includes('powerful_clicks')) baseGpc *= skillTypes.find(s => s.id === 'powerful_clicks').value;
+        if (currentState.craftedArtifacts.includes('diamond_pickaxe')) baseGpc *= artifactTypes.find(a => a.id === 'diamond_pickaxe').value;
+        const goldPerClick = baseGpc * currentPrestigeBonus;
+
+        // --- Gold Per Second Calculation ---
+        let baseGps = 0;
+        let totalGpsMultiplier = 1.0;
+
+        // Calculate total GPS multiplier from upgrades
+        currentState.purchasedUpgrades.forEach(upgradeId => {
+            const upgrade = upgradeTypes.find(u => u.id === upgradeId);
+            if (upgrade && upgrade.type === 'gps_multiplier') {
+                totalGpsMultiplier *= upgrade.value;
+            }
+        });
+
+        for (const type of generatorTypes) {
+            if (type.baseGps) { // Only calculate GPS for gold generators
+                let generatorProduction = (currentState.generators[type.id] || 0) * type.baseGps;
+                let generatorMultiplier = 1.0;
+
+                // Apply upgrade-specific multipliers
+                currentState.purchasedUpgrades.forEach(upgradeId => {
+                    const upgrade = upgradeTypes.find(u => u.id === upgradeId);
+                    if (upgrade && upgrade.type === 'generator_multiplier' && upgrade.target === type.id) {
+                        generatorMultiplier *= upgrade.value;
+                    }
+                });
+                
+                // Apply skill and artifact multipliers
+                if (currentState.purchasedSkills.includes('efficient_miners') && type.id === 'miner') generatorMultiplier *= skillTypes.find(s => s.id === 'efficient_miners').value;
+                if (currentState.craftedArtifacts.includes('coal_engine') && type.id === 'cart') generatorMultiplier *= artifactTypes.find(a => a.id === 'coal_engine').value;
+
+                baseGps += generatorProduction * generatorMultiplier;
+            }
+        }
+        
+        let goldPerSecond = (baseGps * totalGpsMultiplier) * currentPrestigeBonus;
+        
+        if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes.find(s => s.id === 'compound_interest').value;
+
+        return { goldPerClick, goldPerSecond };
+    }, []);
+
     // --- Memoized Calculations ---
+    const { goldPerClick, goldPerSecond } = React.useMemo(() => recalculateValues(gameState), [gameState, recalculateValues]);
     const prestigeBonus = React.useMemo(() => 1 + (gameState.prestigeGems * 0.05), [gameState.prestigeGems]);
     const gemsToGain = React.useMemo(() => {
         if (gameState.gold < PRESTIGE_REQUIREMENT) return 0;
@@ -75,7 +137,6 @@ export default function App() {
     }, [gameState.gold, gameState.purchasedSkills]);
     const scienceToGain = React.useMemo(() => gemsToGain > 0 ? Math.floor(gemsToGain / 5) : 0, [gemsToGain]);
     
-    // NEW: Calculate resources per second
     const resourcesPerSecond = React.useMemo(() => {
         const rps = { iron: 0, coal: 0, diamond: 0 };
         const geologistCount = gameState.generators.geologist || 0;
@@ -90,32 +151,8 @@ export default function App() {
 
 
     // --- Game Logic Functions ---
-    const recalculateValues = React.useCallback((currentState) => {
-        const currentPrestigeBonus = 1 + (currentState.prestigeGems * 0.05);
-
-        let baseGpc = currentState.purchasedUpgrades.includes('reinforced_pick') ? upgradeTypes.find(u => u.id === 'reinforced_pick').value : 1;
-        if (currentState.purchasedSkills.includes('powerful_clicks')) baseGpc *= skillTypes.find(s => s.id === 'powerful_clicks').value;
-        if (currentState.craftedArtifacts.includes('diamond_pickaxe')) baseGpc *= artifactTypes.find(a => a.id === 'diamond_pickaxe').value;
-        const goldPerClick = baseGpc * currentPrestigeBonus;
-
-        let baseGps = 0;
-        for (const type of generatorTypes) {
-            if (type.baseGps) { // Only calculate GPS for gold generators
-                let generatorProduction = (currentState.generators[type.id] || 0) * type.baseGps;
-                if (currentState.purchasedSkills.includes('efficient_miners') && type.id === 'miner') generatorProduction *= skillTypes.find(s => s.id === 'efficient_miners').value;
-                if (currentState.craftedArtifacts.includes('coal_engine') && type.id === 'cart') generatorProduction *= artifactTypes.find(a => a.id === 'coal_engine').value;
-                baseGps += generatorProduction;
-            }
-        }
-        let goldPerSecond = (baseGps * currentState.gpsMultiplier) * currentPrestigeBonus;
-        
-        if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes.find(s => s.id === 'compound_interest').value;
-
-        return { goldPerClick, goldPerSecond };
-    }, []);
-
     const handleManualClick = (e) => {
-        const clickValue = gameState.goldPerClick;
+        const clickValue = goldPerClick;
         const newResources = { ...gameState.resources };
         
         let resourceChanceMultiplier = 1.0;
@@ -147,6 +184,7 @@ export default function App() {
         }
     };
 
+    // --- REFACTORED: Simplified buyUpgrade function ---
     const buyUpgrade = (upgradeId) => {
         const upgrade = upgradeTypes.find(u => u.id === upgradeId);
         if (!upgrade || gameState.purchasedUpgrades.includes(upgradeId) || gameState.gold < upgrade.cost) return;
@@ -154,7 +192,6 @@ export default function App() {
             ...prev,
             gold: prev.gold - upgrade.cost,
             purchasedUpgrades: [...prev.purchasedUpgrades, upgradeId],
-            gpsMultiplier: upgrade.type === 'gps_multiplier' ? prev.gpsMultiplier * upgrade.value : prev.gpsMultiplier,
         }));
     };
     
@@ -216,7 +253,12 @@ export default function App() {
                 }
             }
             if (savedData) {
-                loadedState = { ...getNewGameState(), ...JSON.parse(savedData) };
+                const parsedData = JSON.parse(savedData);
+                // Clean up old derived state properties that are no longer used
+                delete parsedData.goldPerClick;
+                delete parsedData.goldPerSecond;
+                delete parsedData.gpsMultiplier;
+                loadedState = { ...getNewGameState(), ...parsedData };
             }
         } catch (error) { console.error("Error loading saved game:", error); }
 
@@ -260,7 +302,6 @@ export default function App() {
     React.useEffect(() => {
         const gameTick = setInterval(() => {
             setGameState(prev => {
-                 const { goldPerSecond } = recalculateValues(prev);
                  const newResources = { ...prev.resources };
                  const rps = resourcesPerSecond;
                  for (const resId in rps) {
@@ -270,14 +311,7 @@ export default function App() {
             });
         }, 100);
         return () => clearInterval(gameTick);
-    }, [recalculateValues, resourcesPerSecond]);
-
-    React.useEffect(() => {
-        const { goldPerClick, goldPerSecond } = recalculateValues(gameState);
-        if (goldPerClick !== gameState.goldPerClick || goldPerSecond !== gameState.goldPerSecond) {
-            setGameState(prev => ({ ...prev, goldPerClick, goldPerSecond }));
-        }
-    }, [gameState.gold, gameState.generators, gameState.purchasedUpgrades, gameState.prestigeGems, gameState.gpsMultiplier, gameState.purchasedSkills, gameState.craftedArtifacts, recalculateValues]);
+    }, [goldPerSecond, resourcesPerSecond]);
 
     const gameStateRef = React.useRef(gameState);
     React.useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -304,10 +338,10 @@ export default function App() {
                                 <div className="flex items-center gap-3"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-purple-400" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg><div><h2 className="text-lg font-medium text-gray-400">Gemas</h2><p className="text-2xl md:text-3xl font-bold text-purple-400">{gameState.prestigeGems}</p></div></div>
                                 <div className="flex items-center gap-3"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-cyan-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg><div><h2 className="text-lg font-medium text-gray-400">Ciencia</h2><p className="text-2xl md:text-3xl font-bold text-cyan-400">{gameState.sciencePoints}</p></div></div>
                             </div>
-                            <p className="text-sm text-yellow-500 mt-2 text-center">{gameState.goldPerSecond.toFixed(1)} oro por segundo</p>
+                            <p className="text-sm text-yellow-500 mt-2 text-center">{goldPerSecond.toFixed(1)} oro por segundo</p>
                             <p className="text-sm text-purple-300 mt-1 text-center">Bono de prestigio: +{((prestigeBonus - 1) * 100).toFixed(0)}%</p>
                         </div>
-                        <button onClick={handleManualClick} className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-xl transition transform active:scale-95 shadow-lg shadow-yellow-500/20">Picar Oro (+{Math.round(gameState.goldPerClick)})</button>
+                        <button onClick={handleManualClick} className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-xl transition transform active:scale-95 shadow-lg shadow-yellow-500/20">Picar Oro (+{Math.round(goldPerClick)})</button>
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Mejoras</h2>{upgradeTypes.map(upgrade => { const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id); const canAfford = gameState.gold >= upgrade.cost; return ( <div key={upgrade.id} className="bg-green-900/40 p-3 rounded-lg border border-green-700/60 flex justify-between items-center"><div><h4 className="font-semibold">{upgrade.name}</h4><p className="text-xs text-gray-400">{upgrade.description}</p></div><button onClick={() => buyUpgrade(upgrade.id)} disabled={isPurchased || !canAfford} className={`bg-green-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-green-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `${upgrade.cost.toLocaleString('es')} Oro`}</button></div>); })}</div>
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Generadores</h2>{generatorTypes.map(gen => { const count = gameState.generators[gen.id] || 0; const cost = gen.baseCost * Math.pow(gen.costMultiplier, count); const canAfford = gameState.gold >= cost; const isResourceGen = !!gen.baseRps; return (<div key={gen.id} className="bg-gray-700/50 p-4 rounded-xl space-y-3 border border-gray-600"><div className="flex justify-between items-center"><div><h3 className="text-lg font-semibold">{gen.name}</h3><p className="text-gray-400 text-xs">{gen.description}</p><p className="text-xs text-gray-300">Posees: <span className="font-bold">{count}</span></p></div><button onClick={() => buyGenerator(gen.id)} disabled={!canAfford} className={`text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95` : 'opacity-50 cursor-not-allowed'}`}>Comprar</button></div><div className="text-center bg-gray-800 p-1 rounded-md"><p className="text-gray-400 text-sm">Costo: <span className="font-semibold text-white">{Math.ceil(cost).toLocaleString('es')}</span> Oro</p></div></div>); })}</div>
@@ -323,4 +357,4 @@ export default function App() {
             </div>
         </>
     );
-                }
+            }
