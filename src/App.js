@@ -117,6 +117,20 @@ export default function App() {
     };
 
     // --- Effects ---
+    
+    // This effect injects the Tailwind CSS script into the document's head
+    React.useEffect(() => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.tailwindcss.com';
+        script.async = true;
+        document.head.appendChild(script);
+
+        // Cleanup function to remove the script when the component unmounts
+        return () => {
+            document.head.removeChild(script);
+        };
+    }, []); // Empty dependency array means this runs only once on mount
+
     React.useEffect(() => {
         const gameTick = setInterval(() => {
             if (gameState.goldPerSecond > 0) {
