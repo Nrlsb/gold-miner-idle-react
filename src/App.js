@@ -24,21 +24,15 @@ const getNewGameState = () => ({
     generators: {},
     purchasedUpgrades: [],
     prestigeGems: 0,
+    lastSaveTimestamp: Date.now(), // Add timestamp for offline progress
 });
 
 // --- Main App Component ---
 export default function App() {
     // --- State Management ---
-    const [gameState, setGameState] = React.useState(() => {
-        try {
-            const savedData = localStorage.getItem(SAVE_KEY);
-            return savedData ? { ...getNewGameState(), ...JSON.parse(savedData) } : getNewGameState();
-        } catch (error) {
-            console.error("Error loading saved game:", error);
-            return getNewGameState();
-        }
-    });
+    const [gameState, setGameState] = React.useState(getNewGameState());
     const [floatingNumbers, setFloatingNumbers] = React.useState([]);
+    const [offlineEarnings, setOfflineEarnings] = React.useState(null);
 
     // --- Memoized Calculations ---
     const prestigeBonus = React.useMemo(() => 1 + (gameState.prestigeGems * 0.05), [gameState.prestigeGems]);
@@ -76,7 +70,7 @@ export default function App() {
 
         setTimeout(() => {
             setFloatingNumbers(current => current.filter(n => n.id !== newFloatingNumber.id));
-        }, 1000); // Remove after 1 second (animation duration)
+        }, 1000);
     };
 
     const buyGenerator = (generatorId) => {
@@ -118,19 +112,48 @@ export default function App() {
 
     // --- Effects ---
     
-    // This effect injects the Tailwind CSS script into the document's head
+    // Effect for loading game and calculating offline progress (runs only once on mount)
     React.useEffect(() => {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.tailwindcss.com';
-        script.async = true;
-        document.head.appendChild(script);
+        let loadedState = getNewGameState();
+        try {
+            const savedData = localStorage.getItem(SAVE_KEY);
+            if (savedData) {
+                loadedState = { ...getNewGameState(), ...JSON.parse(savedData) };
+            }
+        } catch (error) {
+            console.error("Error loading saved game:", error);
+        }
 
-        // Cleanup function to remove the script when the component unmounts
-        return () => {
-            document.head.removeChild(script);
-        };
-    }, []); // Empty dependency array means this runs only once on mount
+        const { goldPerSecond: loadedGps } = recalculateValues(loadedState);
+        const timeNow = Date.now();
+        const timeDifferenceSeconds = (timeNow - loadedState.lastSaveTimestamp) / 1000;
+        const earnedGold = timeDifferenceSeconds * loadedGps;
 
+        if (earnedGold > 1) {
+            loadedState.gold += earnedGold;
+            setOfflineEarnings({
+                time: timeDifferenceSeconds,
+                gold: earnedGold,
+            });
+        }
+        
+        setGameState(loadedState);
+
+    }, [recalculateValues]); // recalculateValues is stable, so this effectively runs once
+    
+    // Effect to inject Tailwind CSS script
+    React.useEffect(() => {
+        const scriptId = 'tailwind-script';
+        if (!document.getElementById(scriptId)) {
+            const script = document.createElement('script');
+            script.id = scriptId;
+            script.src = 'https://cdn.tailwindcss.com';
+            script.async = true;
+            document.head.appendChild(script);
+        }
+    }, []);
+
+    // Game loop for passive gold generation
     React.useEffect(() => {
         const gameTick = setInterval(() => {
             if (gameState.goldPerSecond > 0) {
@@ -140,6 +163,7 @@ export default function App() {
         return () => clearInterval(gameTick);
     }, [gameState.goldPerSecond]);
 
+    // Recalculate derived values when dependencies change
     React.useEffect(() => {
         const { goldPerClick, goldPerSecond } = recalculateValues(gameState);
         if (goldPerClick !== gameState.goldPerClick || goldPerSecond !== gameState.goldPerSecond) {
@@ -147,34 +171,38 @@ export default function App() {
         }
     }, [gameState.generators, gameState.purchasedUpgrades, gameState.prestigeGems, gameState.gpsMultiplier, recalculateValues]);
 
+    // Save game state to localStorage
     React.useEffect(() => {
-        const saveTimeout = setTimeout(() => localStorage.setItem(SAVE_KEY, JSON.stringify(gameState)), 1000);
+        const saveTimeout = setTimeout(() => {
+            localStorage.setItem(SAVE_KEY, JSON.stringify({ ...gameState, lastSaveTimestamp: Date.now() }));
+        }, 1000);
         return () => clearTimeout(saveTimeout);
     }, [gameState]);
 
     return (
         <>
             <style>{`
-                @keyframes float-up {
-                    0% { transform: translateY(0); opacity: 1; }
-                    100% { transform: translateY(-50px); opacity: 0; }
-                }
-                .floating-number {
-                    position: fixed;
-                    pointer-events: none;
-                    animation: float-up 1s ease-out forwards;
-                    font-weight: bold;
-                    font-size: 1.5rem;
-                    color: #FBBF24; /* Tailwind yellow-400 */
-                    text-shadow: 1px 1px 2px black;
-                }
+                @keyframes float-up { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-50px); opacity: 0; } }
+                .floating-number { position: fixed; pointer-events: none; animation: float-up 1s ease-out forwards; font-weight: bold; font-size: 1.5rem; color: #FBBF24; text-shadow: 1px 1px 2px black; }
+                @keyframes fade-in { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+                .modal-backdrop { animation: fade-in 0.3s ease-out forwards; }
             `}</style>
             
             {floatingNumbers.map(num => (
-                <div key={num.id} className="floating-number" style={{ left: num.x, top: num.y }}>
-                    {num.value}
-                </div>
+                <div key={num.id} className="floating-number" style={{ left: num.x, top: num.y }}>{num.value}</div>
             ))}
+            
+            {/* Offline Earnings Modal */}
+            {offlineEarnings && (
+                <div className="modal-backdrop fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 rounded-xl p-8 text-center space-y-4 border border-yellow-400 shadow-lg">
+                        <h2 className="text-2xl font-bold text-yellow-400">¡Bienvenido de vuelta!</h2>
+                        <p className="text-gray-300">Mientras no estabas ({Math.round(offlineEarnings.time)} segundos),<br/>tus generadores han producido:</p>
+                        <p className="text-4xl font-bold text-white">{Math.floor(offlineEarnings.gold).toLocaleString('es')} Oro</p>
+                        <button onClick={() => setOfflineEarnings(null)} className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-6 rounded-lg text-lg transition transform active:scale-95">¡Genial!</button>
+                    </div>
+                </div>
+            )}
 
             <div className="bg-gradient-to-b from-gray-900 to-gray-800 text-white flex items-start justify-center min-h-screen py-8 font-sans">
                 <div className="w-full max-w-md mx-auto bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 md:p-8 space-y-6 border border-gray-700">
@@ -277,4 +305,4 @@ export default function App() {
             </div>
         </>
     );
-}
+                        }
