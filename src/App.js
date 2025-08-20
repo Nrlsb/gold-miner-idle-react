@@ -1,7 +1,7 @@
 import React from 'react';
 
 // --- Definitions ---
-const SAVE_KEY = 'goldMinerIdleSave_React_v8'; // Incremented save key for new features
+const SAVE_KEY = 'goldMinerIdleSave_React_v9'; // Incremented save key for QoL features
 const PRESTIGE_REQUIREMENT = 1000000;
 const ASCENSION_REQUIREMENT = 1000;
 
@@ -97,13 +97,43 @@ const getNewGameState = () => ({
     celestialRelics: 0,
     purchasedAscensionUpgrades: [],
     generatorSpecializations: {},
-    // --- NEW FEATURE: State for new systems ---
     stats: { totalClicks: 0, prestiges: 0, ascensions: 0 },
     unlockedAchievements: [],
     goldRush: { active: false, timeLeft: 0, cooldown: 0 },
     activeClickables: [],
     lastSaveTimestamp: Date.now(),
 });
+
+// --- NEW FEATURE: Number and Time Formatting ---
+const numberFormatter = new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    compactDisplay: 'short',
+    maximumFractionDigits: 2
+});
+
+function formatNumber(num) {
+    if (num < 1000) return Math.floor(num).toLocaleString('es');
+    return numberFormatter.format(num);
+}
+
+function formatTime(seconds) {
+    if (seconds === Infinity) return 'Nunca';
+    if (seconds < 0) seconds = 0;
+
+    const d = Math.floor(seconds / (3600*24));
+    const h = Math.floor(seconds % (3600*24) / 3600);
+    const m = Math.floor(seconds % 3600 / 60);
+    const s = Math.floor(seconds % 60);
+    
+    let parts = [];
+    if (d > 0) parts.push(`${d}d`);
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+    
+    return parts.slice(0, 2).join(' ');
+}
+
 
 // --- Main App Component ---
 export default function App() {
@@ -112,7 +142,8 @@ export default function App() {
     const [floatingNumbers, setFloatingNumbers] = React.useState([]);
     const [offlineEarnings, setOfflineEarnings] = React.useState(null);
     const [specializationChoice, setSpecializationChoice] = React.useState(null);
-    const [activeTab, setActiveTab] = React.useState('research'); // NEW: For tabs
+    const [activeTab, setActiveTab] = React.useState('research');
+    const [buyAmount, setBuyAmount] = React.useState(1); // NEW: Buy amount state
 
     // --- Centralized calculation logic ---
     const recalculateValues = React.useCallback((currentState) => {
@@ -127,7 +158,6 @@ export default function App() {
 
         const currentPrestigeBonus = 1 + (currentState.prestigeGems * 0.05 * gemEffectiveness);
 
-        // --- Gold Per Click Calculation ---
         let baseGpc = 1;
         currentState.purchasedUpgrades.forEach(upgradeId => {
             const upgrade = upgradeTypes.find(u => u.id === upgradeId);
@@ -141,17 +171,13 @@ export default function App() {
         });
         if (currentState.craftedArtifacts.includes('diamond_pickaxe')) gpcMultiplier *= artifactTypes.find(a => a.id === 'diamond_pickaxe').value;
         
-        // --- NEW FEATURE: Achievement bonus for GPC ---
         currentState.unlockedAchievements.forEach(achId => {
             const ach = achievementTypes[achId];
-            if (ach.reward.type === 'gpc_multiplier') {
-                gpcMultiplier *= ach.reward.value;
-            }
+            if (ach.reward.type === 'gpc_multiplier') gpcMultiplier *= ach.reward.value;
         });
         
         let goldPerClick = baseGpc * gpcMultiplier * currentPrestigeBonus * totalGoldMultiplierFromAscension;
 
-        // --- Gold Per Second Calculation ---
         let baseGps = 0;
         let totalGpsMultiplier = 1.0;
 
@@ -186,12 +212,9 @@ export default function App() {
                 if (specialization === 'elite_miners') generatorMultiplier *= 1.5;
                 else if (specialization === 'iron_miners') generatorMultiplier *= 0.75;
                 
-                // --- NEW FEATURE: Achievement bonus for generators ---
                 currentState.unlockedAchievements.forEach(achId => {
                     const ach = achievementTypes[achId];
-                    if (ach.reward.type === 'generator_multiplier' && ach.reward.target === type.id) {
-                        generatorMultiplier *= ach.reward.value;
-                    }
+                    if (ach.reward.type === 'generator_multiplier' && ach.reward.target === type.id) generatorMultiplier *= ach.reward.value;
                 });
 
                 baseGps += generatorProduction * generatorMultiplier;
@@ -202,7 +225,6 @@ export default function App() {
         
         if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes['compound_interest'].value;
 
-        // --- NEW FEATURE: Gold Rush Multiplier ---
         if (currentState.goldRush.active) {
             goldPerClick *= GOLD_RUSH.MULTIPLIER;
             goldPerSecond *= GOLD_RUSH.MULTIPLIER;
@@ -291,14 +313,15 @@ export default function App() {
             stats: { ...prev.stats, totalClicks: prev.stats.totalClicks + 1 }
         }));
 
-        const newFloatingNumber = { id: Date.now() + Math.random(), value: `+${Math.round(clickValue)}`, x: e.clientX, y: e.clientY };
+        const newFloatingNumber = { id: Date.now() + Math.random(), value: `+${formatNumber(clickValue)}`, x: e.clientX, y: e.clientY };
         setFloatingNumbers(current => [...current, newFloatingNumber]);
         setTimeout(() => setFloatingNumbers(current => current.filter(n => n.id !== newFloatingNumber.id)), 1000);
     };
 
-    const buyGenerator = (generatorId) => {
+    // --- NEW FEATURE: Multi-buy logic for generators ---
+    const calculateGeneratorCost = React.useCallback((generatorId, amount) => {
         const generator = generatorTypes.find(g => g.id === generatorId);
-        let count = gameState.generators[generatorId] || 0;
+        const count = gameState.generators[generatorId] || 0;
         let costMultiplier = generator.costMultiplier;
         if (gameState.purchasedSkills.includes('geology_grants') && generatorId === 'geologist') {
             costMultiplier *= skillTypes['geology_grants'].value;
@@ -306,12 +329,47 @@ export default function App() {
         if (gameState.generatorSpecializations[generatorId] === 'elite_miners') {
             costMultiplier *= 1.1;
         }
-        const cost = generator.baseCost * Math.pow(costMultiplier, count);
-        if (gameState.gold >= cost) {
-            const newCount = count + 1;
+
+        let totalCost = 0;
+        let canBuyAmount = 0;
+        let currentGold = gameState.gold;
+
+        if (amount === 'max') {
+            if (costMultiplier === 1) {
+                canBuyAmount = Math.floor(currentGold / (generator.baseCost * Math.pow(costMultiplier, count)));
+            } else {
+                // Derived from geometric series sum formula
+                const a = generator.baseCost * Math.pow(costMultiplier, count);
+                const r = costMultiplier;
+                const affordableAmount = Math.floor(Math.log( (currentGold * (r - 1)) / a + 1 ) / Math.log(r));
+                canBuyAmount = affordableAmount > 0 ? affordableAmount : 0;
+            }
+            amount = canBuyAmount;
+        }
+        
+        if (costMultiplier === 1) {
+            totalCost = generator.baseCost * amount;
+        } else {
+            const a = generator.baseCost * Math.pow(costMultiplier, count);
+            const r = costMultiplier;
+            totalCost = a * (Math.pow(r, amount) - 1) / (r - 1);
+        }
+
+        return { totalCost: Math.ceil(totalCost), amountToBuy: amount };
+
+    }, [gameState.gold, gameState.generators, gameState.purchasedSkills, gameState.generatorSpecializations]);
+    
+    const buyGenerator = (generatorId, amount) => {
+        const { totalCost, amountToBuy } = calculateGeneratorCost(generatorId, amount);
+
+        if (amountToBuy > 0 && gameState.gold >= totalCost) {
+            const generator = generatorTypes.find(g => g.id === generatorId);
+            const currentCount = gameState.generators[generatorId] || 0;
+            const newCount = currentCount + amountToBuy;
+
             setGameState(prev => ({
                 ...prev,
-                gold: prev.gold - cost,
+                gold: prev.gold - totalCost,
                 generators: { ...prev.generators, [generatorId]: newCount }
             }));
             
@@ -404,28 +462,19 @@ export default function App() {
         }
     };
 
-    // --- NEW FEATURE: Functions for new systems ---
     const activateGoldRush = () => {
         if (gameState.goldRush.cooldown > 0) return;
-        setGameState(prev => ({
-            ...prev,
-            goldRush: { active: true, timeLeft: GOLD_RUSH.DURATION, cooldown: GOLD_RUSH.COOLDOWN }
-        }));
+        setGameState(prev => ({ ...prev, goldRush: { active: true, timeLeft: GOLD_RUSH.DURATION, cooldown: GOLD_RUSH.COOLDOWN } }));
     };
 
     const handleClickable = (clickableId) => {
         const clickable = gameState.activeClickables.find(c => c.id === clickableId);
         if (!clickable) return;
-
         if (clickable.type === 'nugget') {
-            const goldReward = goldPerSecond * 15; // 15 seconds of production
+            const goldReward = goldPerSecond * 15;
             setGameState(prev => ({ ...prev, gold: prev.gold + goldReward }));
         }
-        
-        setGameState(prev => ({
-            ...prev,
-            activeClickables: prev.activeClickables.filter(c => c.id !== clickableId)
-        }));
+        setGameState(prev => ({ ...prev, activeClickables: prev.activeClickables.filter(c => c.id !== clickableId) }));
     };
 
     // --- Effects ---
@@ -481,7 +530,6 @@ export default function App() {
         }
     }, []);
 
-    // --- NEW FEATURE: Main Game Loop for timed events ---
     React.useEffect(() => {
         const gameTick = setInterval(() => {
             setGameState(prev => {
@@ -490,26 +538,18 @@ export default function App() {
                  for (const resId in rps) {
                     newResources[resId] = (newResources[resId] || 0) + rps[resId] / 10;
                  }
-
-                 // Gold Rush Timer
                  let newGoldRush = { ...prev.goldRush };
                  if (newGoldRush.active) {
                      newGoldRush.timeLeft -= 0.1;
-                     if (newGoldRush.timeLeft <= 0) {
-                         newGoldRush.active = false;
-                         newGoldRush.timeLeft = 0;
-                     }
+                     if (newGoldRush.timeLeft <= 0) newGoldRush = { active: false, timeLeft: 0, cooldown: GOLD_RUSH.COOLDOWN };
                  } else if (newGoldRush.cooldown > 0) {
                      newGoldRush.cooldown -= 0.1;
                      if (newGoldRush.cooldown < 0) newGoldRush.cooldown = 0;
                  }
                  
-                 // Achievement Check
                  const newlyUnlocked = [];
                  for (const achId in achievementTypes) {
-                     if (!prev.unlockedAchievements.includes(achId) && achievementTypes[achId].condition(prev)) {
-                         newlyUnlocked.push(achId);
-                     }
+                     if (!prev.unlockedAchievements.includes(achId) && achievementTypes[achId].condition(prev)) newlyUnlocked.push(achId);
                  }
                  let newGems = prev.prestigeGems;
                  let newRelics = prev.celestialRelics;
@@ -520,45 +560,22 @@ export default function App() {
                         if (reward.type === 'flat_relics') newRelics += reward.value;
                     });
                  }
-
-                 return { 
-                     ...prev, 
-                     gold: prev.gold + goldPerSecond / 10, 
-                     resources: newResources,
-                     goldRush: newGoldRush,
-                     unlockedAchievements: [...prev.unlockedAchievements, ...newlyUnlocked],
-                     prestigeGems: newGems,
-                     celestialRelics: newRelics,
-                };
+                 return { ...prev, gold: prev.gold + goldPerSecond / 10, resources: newResources, goldRush: newGoldRush, unlockedAchievements: [...prev.unlockedAchievements, ...newlyUnlocked], prestigeGems: newGems, celestialRelics: newRelics };
             });
         }, 100);
         
-        // Random Clickable Spawner
         const clickableInterval = setInterval(() => {
-            if (Math.random() < 0.15) { // 15% chance every 10 seconds
+            if (Math.random() < 0.15) {
                 setGameState(prev => {
-                    if (prev.activeClickables.length >= 3) return prev; // Max 3 on screen
-                    const newClickable = {
-                        id: Date.now(),
-                        type: 'nugget',
-                        x: 10 + Math.random() * 80, // %
-                        y: 20 + Math.random() * 60, // %
-                    };
-                    setTimeout(() => {
-                        setGameState(current => ({
-                            ...current,
-                            activeClickables: current.activeClickables.filter(c => c.id !== newClickable.id)
-                        }));
-                    }, 8000); // Disappears after 8 seconds
+                    if (prev.activeClickables.length >= 3) return prev;
+                    const newClickable = { id: Date.now(), type: 'nugget', x: 10 + Math.random() * 80, y: 20 + Math.random() * 60 };
+                    setTimeout(() => { setGameState(current => ({ ...current, activeClickables: current.activeClickables.filter(c => c.id !== newClickable.id) })); }, 8000);
                     return { ...prev, activeClickables: [...prev.activeClickables, newClickable] };
                 });
             }
         }, 10000);
 
-        return () => {
-            clearInterval(gameTick);
-            clearInterval(clickableInterval);
-        };
+        return () => { clearInterval(gameTick); clearInterval(clickableInterval); };
     }, [goldPerSecond, resourcesPerSecond]);
 
     const gameStateRef = React.useRef(gameState);
@@ -572,11 +589,7 @@ export default function App() {
     }, []);
 
     const skillBranches = React.useMemo(() => {
-        const branches = {
-            clicking: { name: 'Clics', skills: [] },
-            automation: { name: 'Automatización', skills: [] },
-            prestige: { name: 'Prestigio', skills: [] },
-        };
+        const branches = { clicking: { name: 'Clics', skills: [] }, automation: { name: 'Automatización', skills: [] }, prestige: { name: 'Prestigio', skills: [] } };
         for (const skillId in skillTypes) {
             const skill = { ...skillTypes[skillId], id: skillId };
             if (branches[skill.branch]) branches[skill.branch].skills.push(skill);
@@ -600,15 +613,16 @@ export default function App() {
                 .floating-number { position: fixed; pointer-events: none; animation: float-up 1s ease-out forwards; font-weight: bold; font-size: 1.5rem; color: #FBBF24; text-shadow: 1px 1px 2px black; } 
                 .modal-backdrop { animation: fade-in 0.3s ease-out forwards; }
                 .clickable-nugget { position: absolute; cursor: pointer; animation: pulse 2s infinite; }
+                .can-afford { animation: glow 1.5s infinite alternate; }
                 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
                 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
                 @keyframes float-up { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-50px); opacity: 0; } }
+                @keyframes glow { from { box-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px #fde047, 0 0 8px #fde047; } to { box-shadow: 0 0 4px #fff, 0 0 8px #fff, 0 0 12px #facc15, 0 0 16px #facc15; } }
             `}</style>
             <SpecializationModal />
             {floatingNumbers.map(num => (<div key={num.id} className="floating-number" style={{ left: num.x, top: num.y }}>{num.value}</div>))}
-            {offlineEarnings && (<div className="modal-backdrop fixed inset-0 bg-black/60 flex items-center justify-center z-50"><div className="bg-gray-800 rounded-xl p-8 text-center space-y-4 border border-yellow-400 shadow-lg"><h2 className="text-2xl font-bold text-yellow-400">¡Bienvenido de vuelta!</h2><p className="text-gray-300">Mientras no estabas ({Math.round(offlineEarnings.time)} segundos), has producido:</p><p className="text-4xl font-bold text-white">{Math.floor(offlineEarnings.gold).toLocaleString('es')} Oro</p><div>{Object.entries(offlineEarnings.resources).map(([id, val]) => val > 0 && (<p key={id} className="text-lg text-gray-300">{`+${Math.floor(val).toLocaleString('es')} ${resourceTypes.find(r=>r.id===id).name}`}</p>))}</div><button onClick={() => setOfflineEarnings(null)} className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-6 rounded-lg text-lg transition transform active:scale-95">¡Genial!</button></div></div>)}
+            {offlineEarnings && (<div className="modal-backdrop fixed inset-0 bg-black/60 flex items-center justify-center z-50"><div className="bg-gray-800 rounded-xl p-8 text-center space-y-4 border border-yellow-400 shadow-lg"><h2 className="text-2xl font-bold text-yellow-400">¡Bienvenido de vuelta!</h2><p className="text-gray-300">Mientras no estabas ({formatTime(offlineEarnings.time)}), has producido:</p><p className="text-4xl font-bold text-white">{formatNumber(offlineEarnings.gold)} Oro</p><div>{Object.entries(offlineEarnings.resources).map(([id, val]) => val > 0 && (<p key={id} className="text-lg text-gray-300">{`+${formatNumber(val)} ${resourceTypes.find(r=>r.id===id).name}`}</p>))}</div><button onClick={() => setOfflineEarnings(null)} className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-6 rounded-lg text-lg transition transform active:scale-95">¡Genial!</button></div></div>)}
             
-            {/* --- NEW FEATURE: Clickable Events Renderer --- */}
             <div className="absolute inset-0 pointer-events-none">
                 {gameState.activeClickables.map(c => (
                     <div key={c.id} className="clickable-nugget" style={{ left: `${c.x}%`, top: `${c.y}%` }} onClick={() => handleClickable(c.id)}>
@@ -623,30 +637,31 @@ export default function App() {
                         <div className="text-center"><h1 className="text-3xl font-bold text-yellow-400">Gold Miner Idle (React)</h1><p className="text-gray-400">¡Conviértete en un magnate del oro!</p></div>
                         <div className="bg-gray-900 p-6 rounded-xl border border-gray-700 sticky top-4 z-10 shadow-lg">
                             <div className="flex justify-around items-center flex-wrap gap-4">
-                                <div><h2 className="text-lg font-medium text-gray-400">Oro</h2><p className="text-2xl md:text-3xl font-bold text-white">{Math.floor(gameState.gold).toLocaleString('es')}</p></div>
-                                <div><h2 className="text-lg font-medium text-gray-400">Gemas</h2><p className="text-2xl md:text-3xl font-bold text-purple-400">{gameState.prestigeGems}</p></div>
-                                <div><h2 className="text-lg font-medium text-gray-400">Ciencia</h2><p className="text-2xl md:text-3xl font-bold text-cyan-400">{Math.floor(gameState.sciencePoints)}</p></div>
+                                <div><h2 className="text-lg font-medium text-gray-400">Oro</h2><p className="text-2xl md:text-3xl font-bold text-white" title={Math.floor(gameState.gold).toLocaleString('es')}>{formatNumber(gameState.gold)}</p></div>
+                                <div><h2 className="text-lg font-medium text-gray-400">Gemas</h2><p className="text-2xl md:text-3xl font-bold text-purple-400">{formatNumber(gameState.prestigeGems)}</p></div>
+                                <div><h2 className="text-lg font-medium text-gray-400">Ciencia</h2><p className="text-2xl md:text-3xl font-bold text-cyan-400">{formatNumber(gameState.sciencePoints)}</p></div>
                                 <div><h2 className="text-lg font-medium text-gray-400">Reliquias</h2><p className="text-2xl md:text-3xl font-bold text-amber-300">{gameState.celestialRelics} 🌟</p></div>
                             </div>
-                            <p className="text-sm text-yellow-500 mt-2 text-center">{goldPerSecond.toFixed(1)} oro por segundo</p>
+                            <p className="text-sm text-yellow-500 mt-2 text-center">{formatNumber(goldPerSecond)} oro por segundo</p>
                             <p className="text-sm text-purple-300 mt-1 text-center">Bono de prestigio: +{((prestigeBonus - 1) * 100).toFixed(0)}%</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button onClick={handleManualClick} className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-xl transition transform active:scale-95 shadow-lg shadow-yellow-500/20">Picar Oro (+{Math.round(goldPerClick)})</button>
-                            {/* --- NEW FEATURE: Gold Rush Button --- */}
+                            <button onClick={handleManualClick} className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-xl transition transform active:scale-95 shadow-lg shadow-yellow-500/20">Picar Oro (+{formatNumber(goldPerClick)})</button>
                             <button onClick={activateGoldRush} disabled={gameState.goldRush.cooldown > 0 || gameState.goldRush.active} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 rounded-lg text-xl transition transform active:scale-95 shadow-lg shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
                                 {gameState.goldRush.active ? `¡Fiebre del Oro! (${Math.ceil(gameState.goldRush.timeLeft)}s)` : gameState.goldRush.cooldown > 0 ? `Enfriamiento (${Math.ceil(gameState.goldRush.cooldown)}s)` : 'Fiebre del Oro'}
                             </button>
                         </div>
                         <div className="grid md:grid-cols-2 gap-6">
-                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Mejoras</h2>{upgradeTypes.map(upgrade => { const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id); const canAfford = gameState.gold >= upgrade.cost; return ( <div key={upgrade.id} className="bg-green-900/40 p-3 rounded-lg border border-green-700/60 flex justify-between items-center"><div><h4 className="font-semibold">{upgrade.name}</h4><p className="text-xs text-gray-400">{upgrade.description}</p></div><button onClick={() => buyUpgrade(upgrade.id)} disabled={isPurchased || !canAfford} className={`bg-green-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-green-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `${upgrade.cost.toLocaleString('es')} Oro`}</button></div>); })}</div>
-                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Generadores</h2>{generatorTypes.map(gen => {
+                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Mejoras</h2>{upgradeTypes.map(upgrade => { const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id); const canAfford = gameState.gold >= upgrade.cost; return ( <div key={upgrade.id} className="bg-green-900/40 p-3 rounded-lg border border-green-700/60 flex justify-between items-center"><div><h4 className="font-semibold">{upgrade.name}</h4><p className="text-xs text-gray-400">{upgrade.description}</p></div><button onClick={() => buyUpgrade(upgrade.id)} disabled={isPurchased || !canAfford} className={`bg-green-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-green-700 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `${formatNumber(upgrade.cost)} Oro`}</button></div>); })}</div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center border-b-2 border-gray-700 pb-2 mb-4">
+                                    <h2 className="text-2xl font-bold text-center text-gray-300">Generadores</h2>
+                                    <div className="flex space-x-1 bg-gray-700 p-1 rounded-lg">{[1, 10, 100, 'max'].map(amount => <button key={amount} onClick={() => setBuyAmount(amount)} className={`px-3 py-1 text-xs font-bold rounded-md ${buyAmount === amount ? 'bg-blue-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-600'}`}>{typeof amount === 'string' ? 'Máx' : `x${amount}`}</button>)}</div>
+                                </div>
+                                {generatorTypes.map(gen => {
                                 const count = gameState.generators[gen.id] || 0;
-                                let costMultiplier = gen.costMultiplier;
-                                if (gameState.purchasedSkills.includes('geology_grants') && gen.id === 'geologist') costMultiplier *= skillTypes['geology_grants'].value;
-                                if (gameState.generatorSpecializations[gen.id] === 'elite_miners') costMultiplier *= 1.1;
-                                const cost = gen.baseCost * Math.pow(costMultiplier, count);
-                                const canAfford = gameState.gold >= cost;
+                                const { totalCost, amountToBuy } = calculateGeneratorCost(gen.id, buyAmount);
+                                const canAfford = gameState.gold >= totalCost;
                                 const isResourceGen = !!gen.baseRps;
                                 const specialization = gameState.generatorSpecializations[gen.id];
                                 let synergyBonusText = null;
@@ -659,25 +674,26 @@ export default function App() {
                                     const bonus = (resourceFindingBonus - 1) * 100;
                                      if (bonus > 0) synergyBonusText = <p className="text-xs text-green-400">Bono de Excavadoras: +{bonus.toFixed(0)}% recursos</p>;
                                 }
+                                const timeToAfford = (totalCost - gameState.gold) / goldPerSecond;
+
                                 return (
                                 <div key={gen.id} className={`p-4 rounded-xl space-y-3 border ${specialization ? 'bg-yellow-900/30 border-yellow-600/50' : 'bg-gray-700/50 border-gray-600'}`}>
                                     <div className="flex justify-between items-center">
-                                        <div><h3 className="text-lg font-semibold">{gen.name}</h3><p className="text-gray-400 text-xs">{gen.description}</p><p className="text-xs text-gray-300">Posees: <span className="font-bold">{count}</span></p>{synergyBonusText}{specialization && <p className="text-xs text-yellow-400 font-semibold mt-1">Especialización: {gen.specializations.options[specialization].name}</p>}</div>
-                                        <button onClick={() => buyGenerator(gen.id)} disabled={!canAfford} className={`text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95` : 'opacity-50 cursor-not-allowed'}`}>Comprar</button>
+                                        <div><h3 className="text-lg font-semibold">{gen.name}</h3><p className="text-gray-400 text-xs">{gen.description}</p><p className="text-xs text-gray-300">Posees: <span className="font-bold">{formatNumber(count)}</span></p>{synergyBonusText}{specialization && <p className="text-xs text-yellow-400 font-semibold mt-1">Especialización: {gen.specializations.options[specialization].name}</p>}</div>
+                                        <button onClick={() => buyGenerator(gen.id, buyAmount)} disabled={!canAfford} className={`text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95 can-afford` : 'opacity-50 cursor-not-allowed'}`}>Comprar {amountToBuy > 0 ? formatNumber(amountToBuy) : ''}</button>
                                     </div>
-                                    <div className="text-center bg-gray-800 p-1 rounded-md"><p className="text-gray-400 text-sm">Costo: <span className="font-semibold text-white">{Math.ceil(cost).toLocaleString('es')}</span> Oro</p></div>
+                                    <div className="text-center bg-gray-800 p-1 rounded-md"><p className="text-gray-400 text-sm">Costo: <span className="font-semibold text-white">{formatNumber(totalCost)}</span> Oro</p>{!canAfford && goldPerSecond > 0 && <p className="text-xs text-gray-500">({formatTime(timeToAfford)})</p>}</div>
                                 </div>
                                 );
                             })}</div>
                         </div>
                         <div className="grid md:grid-cols-2 gap-6 pt-4 border-t border-gray-700">
-                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300">Prestigio</h2><div className="bg-purple-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia para obtener Gemas y Puntos de Ciencia.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{PRESTIGE_REQUIREMENT.toLocaleString('es')}</span> Oro</p><button onClick={prestige} disabled={gemsToGain <= 0} className={`w-full bg-purple-600 text-white font-bold py-3 px-5 rounded-lg transition ${gemsToGain > 0 ? 'hover:bg-purple-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Prestigio por +{gemsToGain} Gemas y +{scienceToGain} Ciencia</button></div></div>
-                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-amber-300">Ascensión</h2><div className="bg-amber-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia todo (incl. gemas) para obtener Reliquias Celestiales.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{ASCENSION_REQUIREMENT.toLocaleString('es')}</span> Gemas</p><button onClick={ascend} disabled={relicsToGain <= 0} className={`w-full bg-amber-500 text-black font-bold py-3 px-5 rounded-lg transition ${relicsToGain > 0 ? 'hover:bg-amber-600 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Ascender por +{relicsToGain} Reliquias 🌟</button></div></div>
+                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300">Prestigio</h2><div className="bg-purple-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia para obtener Gemas y Puntos de Ciencia.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{formatNumber(PRESTIGE_REQUIREMENT)}</span> Oro</p><button onClick={prestige} disabled={gemsToGain <= 0} className={`w-full bg-purple-600 text-white font-bold py-3 px-5 rounded-lg transition ${gemsToGain > 0 ? 'hover:bg-purple-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Prestigio por +{formatNumber(gemsToGain)} Gemas y +{formatNumber(scienceToGain)} Ciencia</button></div></div>
+                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-amber-300">Ascensión</h2><div className="bg-amber-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia todo (incl. gemas) para obtener Reliquias Celestiales.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{formatNumber(ASCENSION_REQUIREMENT)}</span> Gemas</p><button onClick={ascend} disabled={relicsToGain <= 0} className={`w-full bg-amber-500 text-black font-bold py-3 px-5 rounded-lg transition ${relicsToGain > 0 ? 'hover:bg-amber-600 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Ascender por +{relicsToGain} Reliquias 🌟</button></div></div>
                         </div>
                         <div className="pt-4 border-t border-gray-700"><button onClick={hardReset} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">Reiniciar Partida (Hard Reset)</button></div>
                     </div>
                     <div className="lg:col-span-1 space-y-6 h-fit sticky top-4">
-                        {/* --- NEW FEATURE: Tabbed Interface --- */}
                         <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 space-y-4 border border-gray-700">
                             <div className="flex border-b border-gray-700">
                                 <button onClick={() => setActiveTab('research')} className={`py-2 px-4 font-semibold ${activeTab === 'research' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}>Investigación</button>
@@ -698,7 +714,7 @@ export default function App() {
                                             const isLocked = !requirementsMet;
                                             return (<div key={skill.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isPurchased ? 'bg-cyan-900/50 border-cyan-700/80' : isLocked ? 'bg-gray-800/60 border-gray-700 opacity-60' : 'bg-gray-700/50 border-gray-600'}`}>
                                                 <div className="flex-grow"><h4 className={`font-semibold ${isLocked ? 'text-gray-400' : 'text-cyan-300'}`}>{skill.name}</h4><p className="text-xs text-gray-400 mt-1">{skill.description}</p>{isLocked && <p className="text-xs text-red-400 mt-1">Requiere: {skill.requires.map(reqId => skillTypes[reqId].name).join(', ')}</p>}</div>
-                                                <button onClick={() => buySkill(skill.id)} disabled={isPurchased || isLocked || !canAfford} className={`w-full mt-3 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : (canAfford && !isLocked) ? 'bg-cyan-600 hover:bg-cyan-700 active:scale-95' : 'bg-cyan-800/50 opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `Costo: ${skill.cost} Ciencia`}</button>
+                                                <button onClick={() => buySkill(skill.id)} disabled={isPurchased || isLocked || !canAfford} className={`w-full mt-3 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : (canAfford && !isLocked) ? 'bg-cyan-600 hover:bg-cyan-700 active:scale-95' : 'bg-cyan-800/50 opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `Costo: ${formatNumber(skill.cost)} Ciencia`}</button>
                                             </div>);
                                         })}
                                     </div>
@@ -714,7 +730,7 @@ export default function App() {
                                         return (
                                             <div key={id} className={`p-3 rounded-lg border flex flex-col transition-all ${isPurchased ? 'bg-amber-900/50 border-amber-700/80' : 'bg-gray-700/50 border-gray-600'}`}>
                                                 <div className="flex-grow"><h4 className="font-semibold text-amber-200">{upgrade.name}</h4><p className="text-xs text-gray-400 mt-1">{upgrade.description}</p></div>
-                                                <button onClick={() => buyAscensionUpgrade(id)} disabled={isPurchased || !canAfford} className={`w-full mt-3 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'bg-amber-500 text-black hover:bg-amber-600 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `Costo: ${upgrade.cost} Reliquias`}</button>
+                                                <button onClick={() => buyAscensionUpgrade(id)} disabled={isPurchased || !canAfford} className={`w-full mt-3 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'bg-amber-500 text-black hover:bg-amber-600 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `Costo: ${upgrade.cost} Reliquias`}</button>
                                             </div>
                                         );
                                     })}
@@ -738,8 +754,8 @@ export default function App() {
 
                             {activeTab === 'crafting' && (
                                 <div>
-                                    <div className="grid grid-cols-3 gap-4 text-center mb-4">{resourceTypes.map(res => (<div key={res.id} className="bg-gray-900 p-2 rounded-lg"><div className="text-2xl">{res.icon}</div><div className="text-sm font-bold">{Math.floor(gameState.resources[res.id] || 0)}</div></div>))}</div>
-                                    <div className="space-y-3">{artifactTypes.map(artifact => { const isCrafted = gameState.craftedArtifacts.includes(artifact.id); const canAfford = Object.entries(artifact.cost).every(([resId, cost]) => gameState.resources[resId] >= cost); return (<div key={artifact.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isCrafted ? 'bg-orange-900/50 border-orange-700/80' : 'bg-gray-700/50 border-gray-600'}`}><div className="flex-grow"><h4 className="font-semibold text-orange-300">{artifact.name}</h4><p className="text-xs text-gray-400 mt-1">{artifact.description}</p></div><div className="text-xs text-gray-400 mt-2">Costo: {Object.entries(artifact.cost).map(([resId, cost]) => `${cost} ${resourceTypes.find(r=>r.id===resId).name}`).join(', ')}</div><button onClick={() => craftArtifact(artifact.id)} disabled={isCrafted || !canAfford} className={`w-full mt-3 bg-orange-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isCrafted ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-orange-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>{isCrafted ? 'Fabricado' : 'Fabricar'}</button></div>);})}</div>
+                                    <div className="grid grid-cols-3 gap-4 text-center mb-4">{resourceTypes.map(res => (<div key={res.id} className="bg-gray-900 p-2 rounded-lg"><div className="text-2xl">{res.icon}</div><div className="text-sm font-bold">{formatNumber(gameState.resources[res.id] || 0)}</div></div>))}</div>
+                                    <div className="space-y-3">{artifactTypes.map(artifact => { const isCrafted = gameState.craftedArtifacts.includes(artifact.id); const canAfford = Object.entries(artifact.cost).every(([resId, cost]) => gameState.resources[resId] >= cost); return (<div key={artifact.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isCrafted ? 'bg-orange-900/50 border-orange-700/80' : 'bg-gray-700/50 border-gray-600'}`}><div className="flex-grow"><h4 className="font-semibold text-orange-300">{artifact.name}</h4><p className="text-xs text-gray-400 mt-1">{artifact.description}</p></div><div className="text-xs text-gray-400 mt-2">Costo: {Object.entries(artifact.cost).map(([resId, cost]) => `${formatNumber(cost)} ${resourceTypes.find(r=>r.id===resId).name}`).join(', ')}</div><button onClick={() => craftArtifact(artifact.id)} disabled={isCrafted || !canAfford} className={`w-full mt-3 bg-orange-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isCrafted ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-orange-700 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isCrafted ? 'Fabricado' : 'Fabricar'}</button></div>);})}</div>
                                 </div>
                             )}
                         </div>
