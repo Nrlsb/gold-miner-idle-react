@@ -14,7 +14,6 @@ const generatorTypes = [
     { id: 'geologist', name: 'Geólogo', description: 'Busca recursos automáticamente.', baseCost: 5000, costMultiplier: 1.30, baseRps: { iron: 0.1, coal: 0.05, diamond: 0.001 } }
 ];
 
-// --- UPDATED: More upgrades with clearer descriptions ---
 const upgradeTypes = [
     { id: 'miner_gloves', name: 'Guantes de Minero', description: '+1 al oro por clic base.', cost: 50, type: 'click_add', value: 1 },
     { id: 'reinforced_pick', name: 'Pico Reforzado', description: '+4 al oro por clic base.', cost: 250, type: 'click_add', value: 4 },
@@ -24,13 +23,26 @@ const upgradeTypes = [
     { id: 'diamond_drills', name: 'Taladros de Diamante', description: 'Duplica la producción de las Excavadoras.', cost: 12000, type: 'generator_multiplier', target: 'excavator', value: 2 }
 ];
 
+// --- NEW: Skill Tree Data Structure ---
+// Skills are now an object with IDs as keys.
+// Each skill has a `branch`, `tier`, and `requires` property to build the tree.
+const skillTypes = {
+    // Branch: Clicking
+    'powerful_clicks_1': { name: 'Clics Potenciados I', description: 'Aumenta el oro por clic en un 25%.', cost: 1, type: 'click_bonus', value: 1.25, branch: 'clicking', tier: 1, requires: [] },
+    'critical_click': { name: 'Golpe Crítico', description: 'Tus clics tienen un 2% de probabilidad de generar 10 veces más oro.', cost: 3, type: 'critical_click_chance', value: 0.02, multiplier: 10, branch: 'clicking', tier: 2, requires: ['powerful_clicks_1'] },
+    'powerful_clicks_2': { name: 'Clics Potenciados II', description: 'Aumenta el oro por clic en otro 50%.', cost: 8, type: 'click_bonus', value: 1.5, branch: 'clicking', tier: 3, requires: ['critical_click'] },
 
-const skillTypes = [
-    { id: 'efficient_miners', name: 'Minería Eficiente', description: 'Los Mineros Automáticos producen un 25% más de oro.', cost: 1, type: 'generator_bonus', target: 'miner', value: 1.25 },
-    { id: 'powerful_clicks', name: 'Clics Potenciados', description: 'Aumenta el oro por clic en un 50%.', cost: 2, type: 'click_bonus', value: 1.5 },
-    { id: 'gem_hoarder', name: 'Acumulador de Gemas', description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.', cost: 5, type: 'prestige_bonus', value: 1 },
-    { id: 'compound_interest', name: 'Interés Compuesto', description: 'Gana un 0.01% de tu oro actual por segundo.', cost: 10, type: 'interest_bonus', value: 0.0001 }
-];
+    // Branch: Automation
+    'efficient_miners_1': { name: 'Minería Eficiente I', description: 'Los Mineros Automáticos producen un 25% más.', cost: 1, type: 'generator_bonus', target: 'miner', value: 1.25, branch: 'automation', tier: 1, requires: [] },
+    'cart_optimization': { name: 'Optimización de Carretas', description: 'Las Carretas de Mina producen un 25% más.', cost: 4, type: 'generator_bonus', target: 'cart', value: 1.25, branch: 'automation', tier: 2, requires: ['efficient_miners_1'] },
+    'compound_interest': { name: 'Interés Compuesto', description: 'Gana un 0.01% de tu oro actual por segundo.', cost: 10, type: 'interest_bonus', value: 0.0001, branch: 'automation', tier: 3, requires: ['cart_optimization'] },
+
+    // Branch: Prestige & Resources
+    'gem_hoarder_1': { name: 'Acumulador de Gemas I', description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.', cost: 2, type: 'prestige_bonus', value: 1, branch: 'prestige', tier: 1, requires: [] },
+    'science_surplus': { name: 'Excedente Científico', description: 'Gana un 10% más de Puntos de Ciencia al hacer prestigio.', cost: 5, type: 'science_bonus', value: 1.1, branch: 'prestige', tier: 2, requires: ['gem_hoarder_1'] },
+    'geology_grants': { name: 'Subsidios Geológicos', description: 'Los Geólogos cuestan un 10% menos.', cost: 8, type: 'cost_reduction', target: 'geologist', value: 0.9, branch: 'prestige', tier: 3, requires: ['science_surplus'] },
+};
+
 
 const resourceTypes = [
     { id: 'iron', name: 'Hierro', icon: '🔩' },
@@ -51,7 +63,7 @@ const getNewGameState = () => ({
     generators: {},
     purchasedUpgrades: [],
     prestigeGems: 0,
-    sciencePoints: 0, 
+    sciencePoints: 0,
     purchasedSkills: [],
     resources: { iron: 0, coal: 0, diamond: 0 },
     craftedArtifacts: [],
@@ -71,7 +83,6 @@ export default function App() {
 
         // --- Gold Per Click Calculation ---
         let baseGpc = 1;
-        // Add bonuses from upgrades
         currentState.purchasedUpgrades.forEach(upgradeId => {
             const upgrade = upgradeTypes.find(u => u.id === upgradeId);
             if (upgrade && upgrade.type === 'click_add') {
@@ -80,15 +91,20 @@ export default function App() {
         });
 
         // Apply skill and artifact multipliers
-        if (currentState.purchasedSkills.includes('powerful_clicks')) baseGpc *= skillTypes.find(s => s.id === 'powerful_clicks').value;
-        if (currentState.craftedArtifacts.includes('diamond_pickaxe')) baseGpc *= artifactTypes.find(a => a.id === 'diamond_pickaxe').value;
-        const goldPerClick = baseGpc * currentPrestigeBonus;
+        let gpcMultiplier = 1.0;
+        currentState.purchasedSkills.forEach(skillId => {
+            const skill = skillTypes[skillId];
+            if(skill && skill.type === 'click_bonus') {
+                gpcMultiplier *= skill.value;
+            }
+        });
+        if (currentState.craftedArtifacts.includes('diamond_pickaxe')) gpcMultiplier *= artifactTypes.find(a => a.id === 'diamond_pickaxe').value;
+        const goldPerClick = baseGpc * gpcMultiplier * currentPrestigeBonus;
 
         // --- Gold Per Second Calculation ---
         let baseGps = 0;
         let totalGpsMultiplier = 1.0;
 
-        // Calculate total GPS multiplier from upgrades
         currentState.purchasedUpgrades.forEach(upgradeId => {
             const upgrade = upgradeTypes.find(u => u.id === upgradeId);
             if (upgrade && upgrade.type === 'gps_multiplier') {
@@ -97,11 +113,10 @@ export default function App() {
         });
 
         for (const type of generatorTypes) {
-            if (type.baseGps) { // Only calculate GPS for gold generators
+            if (type.baseGps) {
                 let generatorProduction = (currentState.generators[type.id] || 0) * type.baseGps;
                 let generatorMultiplier = 1.0;
 
-                // Apply upgrade-specific multipliers
                 currentState.purchasedUpgrades.forEach(upgradeId => {
                     const upgrade = upgradeTypes.find(u => u.id === upgradeId);
                     if (upgrade && upgrade.type === 'generator_multiplier' && upgrade.target === type.id) {
@@ -109,8 +124,12 @@ export default function App() {
                     }
                 });
                 
-                // Apply skill and artifact multipliers
-                if (currentState.purchasedSkills.includes('efficient_miners') && type.id === 'miner') generatorMultiplier *= skillTypes.find(s => s.id === 'efficient_miners').value;
+                currentState.purchasedSkills.forEach(skillId => {
+                    const skill = skillTypes[skillId];
+                    if(skill && skill.type === 'generator_bonus' && skill.target === type.id) {
+                        generatorMultiplier *= skill.value;
+                    }
+                });
                 if (currentState.craftedArtifacts.includes('coal_engine') && type.id === 'cart') generatorMultiplier *= artifactTypes.find(a => a.id === 'coal_engine').value;
 
                 baseGps += generatorProduction * generatorMultiplier;
@@ -119,7 +138,7 @@ export default function App() {
         
         let goldPerSecond = (baseGps * totalGpsMultiplier) * currentPrestigeBonus;
         
-        if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes.find(s => s.id === 'compound_interest').value;
+        if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes['compound_interest'].value;
 
         return { goldPerClick, goldPerSecond };
     }, []);
@@ -130,12 +149,19 @@ export default function App() {
     const gemsToGain = React.useMemo(() => {
         if (gameState.gold < PRESTIGE_REQUIREMENT) return 0;
         let gems = Math.floor(Math.sqrt(gameState.gold / PRESTIGE_REQUIREMENT)) * 5;
-        if (gameState.purchasedSkills.includes('gem_hoarder')) {
-            gems += skillTypes.find(s => s.id === 'gem_hoarder').value;
+        if (gameState.purchasedSkills.includes('gem_hoarder_1')) {
+            gems += skillTypes['gem_hoarder_1'].value;
         }
         return gems;
     }, [gameState.gold, gameState.purchasedSkills]);
-    const scienceToGain = React.useMemo(() => gemsToGain > 0 ? Math.floor(gemsToGain / 5) : 0, [gemsToGain]);
+    const scienceToGain = React.useMemo(() => {
+        if (gemsToGain <= 0) return 0;
+        let science = Math.floor(gemsToGain / 5);
+        if (gameState.purchasedSkills.includes('science_surplus')) {
+            science *= skillTypes['science_surplus'].value;
+        }
+        return Math.floor(science);
+    }, [gemsToGain, gameState.purchasedSkills]);
     
     const resourcesPerSecond = React.useMemo(() => {
         const rps = { iron: 0, coal: 0, diamond: 0 };
@@ -152,7 +178,15 @@ export default function App() {
 
     // --- Game Logic Functions ---
     const handleManualClick = (e) => {
-        const clickValue = goldPerClick;
+        let clickValue = goldPerClick;
+        // NEW: Critical click logic
+        if (gameState.purchasedSkills.includes('critical_click')) {
+            const skill = skillTypes['critical_click'];
+            if (Math.random() < skill.value) {
+                clickValue *= skill.multiplier;
+            }
+        }
+        
         const newResources = { ...gameState.resources };
         
         let resourceChanceMultiplier = 1.0;
@@ -173,8 +207,16 @@ export default function App() {
 
     const buyGenerator = (generatorId) => {
         const generator = generatorTypes.find(g => g.id === generatorId);
-        const count = gameState.generators[generatorId] || 0;
-        const cost = generator.baseCost * Math.pow(generator.costMultiplier, count);
+        let count = gameState.generators[generatorId] || 0;
+        
+        let costMultiplier = generator.costMultiplier;
+        // NEW: Apply cost reduction from skills
+        if (gameState.purchasedSkills.includes('geology_grants') && generatorId === 'geologist') {
+            costMultiplier *= skillTypes['geology_grants'].value;
+        }
+
+        const cost = generator.baseCost * Math.pow(costMultiplier, count);
+
         if (gameState.gold >= cost) {
             setGameState(prev => ({
                 ...prev,
@@ -184,7 +226,6 @@ export default function App() {
         }
     };
 
-    // --- REFACTORED: Simplified buyUpgrade function ---
     const buyUpgrade = (upgradeId) => {
         const upgrade = upgradeTypes.find(u => u.id === upgradeId);
         if (!upgrade || gameState.purchasedUpgrades.includes(upgradeId) || gameState.gold < upgrade.cost) return;
@@ -195,14 +236,21 @@ export default function App() {
         }));
     };
     
+    // NEW: Updated buySkill logic for skill tree
     const buySkill = (skillId) => {
-        const skill = skillTypes.find(s => s.id === skillId);
-        if (!skill || gameState.purchasedSkills.includes(skillId) || gameState.sciencePoints < skill.cost) return;
-        setGameState(prev => ({
-            ...prev,
-            sciencePoints: prev.sciencePoints - skill.cost,
-            purchasedSkills: [...prev.purchasedSkills, skillId],
-        }));
+        const skill = skillTypes[skillId];
+        if (!skill || gameState.purchasedSkills.includes(skillId)) return;
+
+        const canAfford = gameState.sciencePoints >= skill.cost;
+        const requirementsMet = skill.requires.every(reqId => gameState.purchasedSkills.includes(reqId));
+
+        if (canAfford && requirementsMet) {
+            setGameState(prev => ({
+                ...prev,
+                sciencePoints: prev.sciencePoints - skill.cost,
+                purchasedSkills: [...prev.purchasedSkills, skillId],
+            }));
+        }
     };
 
     const craftArtifact = (artifactId) => {
@@ -254,7 +302,6 @@ export default function App() {
             }
             if (savedData) {
                 const parsedData = JSON.parse(savedData);
-                // Clean up old derived state properties that are no longer used
                 delete parsedData.goldPerClick;
                 delete parsedData.goldPerSecond;
                 delete parsedData.gpsMultiplier;
@@ -267,7 +314,6 @@ export default function App() {
         const timeDifferenceSeconds = (timeNow - loadedState.lastSaveTimestamp) / 1000;
         const earnedGold = timeDifferenceSeconds * loadedGps;
 
-        // Calculate offline resource earnings
         const geologistCount = loadedState.generators.geologist || 0;
         const earnedResources = { iron: 0, coal: 0, diamond: 0 };
         if (geologistCount > 0) {
@@ -323,6 +369,25 @@ export default function App() {
         return () => clearInterval(saveInterval);
     }, []);
 
+    // --- NEW: Skill Tree Rendering Logic ---
+    const skillBranches = React.useMemo(() => {
+        const branches = {
+            clicking: { name: 'Clics', skills: [] },
+            automation: { name: 'Automatización', skills: [] },
+            prestige: { name: 'Prestigio', skills: [] },
+        };
+        for (const skillId in skillTypes) {
+            const skill = { ...skillTypes[skillId], id: skillId };
+            if (branches[skill.branch]) {
+                branches[skill.branch].skills.push(skill);
+            }
+        }
+        for (const branch in branches) {
+            branches[branch].skills.sort((a, b) => a.tier - b.tier);
+        }
+        return branches;
+    }, []);
+
     return (
         <>
             <style>{`.floating-number { position: fixed; pointer-events: none; animation: float-up 1s ease-out forwards; font-weight: bold; font-size: 1.5rem; color: #FBBF24; text-shadow: 1px 1px 2px black; } .modal-backdrop { animation: fade-in 0.3s ease-out forwards; }`}</style>
@@ -336,7 +401,7 @@ export default function App() {
                             <div className="flex justify-around items-center flex-wrap gap-4">
                                 <div className="flex items-center gap-3"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" /></svg><div><h2 className="text-lg font-medium text-gray-400">Oro</h2><p className="text-2xl md:text-3xl font-bold text-white">{Math.floor(gameState.gold).toLocaleString('es')}</p></div></div>
                                 <div className="flex items-center gap-3"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-purple-400" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg><div><h2 className="text-lg font-medium text-gray-400">Gemas</h2><p className="text-2xl md:text-3xl font-bold text-purple-400">{gameState.prestigeGems}</p></div></div>
-                                <div className="flex items-center gap-3"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-cyan-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg><div><h2 className="text-lg font-medium text-gray-400">Ciencia</h2><p className="text-2xl md:text-3xl font-bold text-cyan-400">{gameState.sciencePoints}</p></div></div>
+                                <div className="flex items-center gap-3"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-cyan-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg><div><h2 className="text-lg font-medium text-gray-400">Ciencia</h2><p className="text-2xl md:text-3xl font-bold text-cyan-400">{Math.floor(gameState.sciencePoints)}</p></div></div>
                             </div>
                             <p className="text-sm text-yellow-500 mt-2 text-center">{goldPerSecond.toFixed(1)} oro por segundo</p>
                             <p className="text-sm text-purple-300 mt-1 text-center">Bono de prestigio: +{((prestigeBonus - 1) * 100).toFixed(0)}%</p>
@@ -350,11 +415,44 @@ export default function App() {
                         <div className="pt-4 border-t border-gray-700"><button onClick={hardReset} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">Reiniciar Partida (Hard Reset)</button></div>
                     </div>
                     <div className="lg:col-span-1 space-y-6 h-fit sticky top-4">
-                        <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 space-y-4 border border-gray-700"><h2 className="text-2xl font-bold text-center text-cyan-400 border-b-2 border-gray-700 pb-2 mb-4">Investigación</h2><div className="space-y-3">{skillTypes.map(skill => { const isPurchased = gameState.purchasedSkills.includes(skill.id); const canAfford = gameState.sciencePoints >= skill.cost; return (<div key={skill.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isPurchased ? 'bg-cyan-900/50 border-cyan-700/80' : 'bg-gray-700/50 border-gray-600'}`}><div className="flex-grow"><h4 className="font-semibold text-cyan-300">{skill.name}</h4><p className="text-xs text-gray-400 mt-1">{skill.description}</p></div><button onClick={() => buySkill(skill.id)} disabled={isPurchased || !canAfford} className={`w-full mt-3 bg-cyan-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-cyan-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `Costo: ${skill.cost} Ciencia`}</button></div>);})}</div></div>
+                        {/* --- NEW: Skill Tree UI --- */}
+                        <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 space-y-4 border border-gray-700">
+                            <h2 className="text-2xl font-bold text-center text-cyan-400 border-b-2 border-gray-700 pb-2 mb-4">Investigación</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {Object.values(skillBranches).map(branch => (
+                                    <div key={branch.name} className="space-y-3">
+                                        <h3 className="text-lg font-semibold text-center text-cyan-200">{branch.name}</h3>
+                                        {branch.skills.map(skill => {
+                                            const isPurchased = gameState.purchasedSkills.includes(skill.id);
+                                            const requirementsMet = skill.requires.every(reqId => gameState.purchasedSkills.includes(reqId));
+                                            const canAfford = gameState.sciencePoints >= skill.cost;
+                                            const isLocked = !requirementsMet;
+                                            
+                                            return (
+                                                <div key={skill.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isPurchased ? 'bg-cyan-900/50 border-cyan-700/80' : isLocked ? 'bg-gray-800/60 border-gray-700 opacity-60' : 'bg-gray-700/50 border-gray-600'}`}>
+                                                    <div className="flex-grow">
+                                                        <h4 className={`font-semibold ${isLocked ? 'text-gray-400' : 'text-cyan-300'}`}>{skill.name}</h4>
+                                                        <p className="text-xs text-gray-400 mt-1">{skill.description}</p>
+                                                        {isLocked && <p className="text-xs text-red-400 mt-1">Requiere: {skill.requires.map(reqId => skillTypes[reqId].name).join(', ')}</p>}
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => buySkill(skill.id)} 
+                                                        disabled={isPurchased || isLocked || !canAfford} 
+                                                        className={`w-full mt-3 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : (canAfford && !isLocked) ? 'bg-cyan-600 hover:bg-cyan-700 active:scale-95' : 'bg-cyan-800/50 opacity-50 cursor-not-allowed'}`}
+                                                    >
+                                                        {isPurchased ? 'Comprado' : `Costo: ${skill.cost} Ciencia`}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                         <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 space-y-4 border border-gray-700"><h2 className="text-2xl font-bold text-center text-orange-400 border-b-2 border-gray-700 pb-2 mb-4">Fabricación</h2><div className="grid grid-cols-3 gap-4 text-center mb-4">{resourceTypes.map(res => (<div key={res.id} className="bg-gray-900 p-2 rounded-lg"><div className="text-2xl">{res.icon}</div><div className="text-sm font-bold">{Math.floor(gameState.resources[res.id] || 0)}</div></div>))}</div><div className="space-y-3">{artifactTypes.map(artifact => { const isCrafted = gameState.craftedArtifacts.includes(artifact.id); const canAfford = Object.entries(artifact.cost).every(([resId, cost]) => gameState.resources[resId] >= cost); return (<div key={artifact.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isCrafted ? 'bg-orange-900/50 border-orange-700/80' : 'bg-gray-700/50 border-gray-600'}`}><div className="flex-grow"><h4 className="font-semibold text-orange-300">{artifact.name}</h4><p className="text-xs text-gray-400 mt-1">{artifact.description}</p></div><div className="text-xs text-gray-400 mt-2">Costo: {Object.entries(artifact.cost).map(([resId, cost]) => `${cost} ${resourceTypes.find(r=>r.id===resId).name}`).join(', ')}</div><button onClick={() => craftArtifact(artifact.id)} disabled={isCrafted || !canAfford} className={`w-full mt-3 bg-orange-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isCrafted ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-orange-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>{isCrafted ? 'Fabricado' : 'Fabricar'}</button></div>);})}</div></div>
                     </div>
                 </div>
             </div>
         </>
     );
-            }
+}
