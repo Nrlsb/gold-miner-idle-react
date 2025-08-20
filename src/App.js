@@ -654,7 +654,7 @@ export default function App() {
                                 {gameState.goldRush.active ? `¡Fiebre del Oro! (${Math.ceil(gameState.goldRush.timeLeft)}s)` : gameState.goldRush.cooldown > 0 ? `Enfriamiento (${Math.ceil(gameState.goldRush.cooldown)}s)` : 'Fiebre del Oro'}
                             </button>
                         </div>
-                        <div className="grid md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Mejoras</h2>{upgradeTypes.map(upgrade => { const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id); const canAfford = gameState.gold >= upgrade.cost; return ( <div key={upgrade.id} className="bg-green-900/40 p-3 rounded-lg border border-green-700/60 flex justify-between items-center"><div><h4 className="font-semibold">{upgrade.name}</h4><p className="text-xs text-gray-400">{upgrade.description}</p></div><button onClick={() => buyUpgrade(upgrade.id)} disabled={isPurchased || !canAfford} className={`bg-green-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-green-700 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `${formatNumber(upgrade.cost)} Oro`}</button></div>); })}</div>
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center border-b-2 border-gray-700 pb-2 mb-4">
@@ -678,12 +678,15 @@ export default function App() {
                                      if (bonus > 0) synergyBonusText = <p className="text-xs text-green-400">Bono de Excavadoras: +{bonus.toFixed(0)}% recursos</p>;
                                 }
                                 const timeToAfford = (totalCost - gameState.gold) / goldPerSecond;
+                                
+                                // FIX: Corrected the className template literal to avoid syntax errors.
+                                const buttonClass = `text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95 can-afford` : 'opacity-50 cursor-not-allowed'}`;
 
                                 return (
                                 <div key={gen.id} className={`p-4 rounded-xl space-y-3 border ${specialization ? 'bg-yellow-900/30 border-yellow-600/50' : 'bg-gray-700/50 border-gray-600'}`}>
                                     <div className="flex justify-between items-center">
                                         <div><h3 className="text-lg font-semibold">{gen.name}</h3><p className="text-gray-400 text-xs">{gen.description}</p><p className="text-xs text-gray-300">Posees: <span className="font-bold">{formatNumber(count)}</span></p>{synergyBonusText}{specialization && <p className="text-xs text-yellow-400 font-semibold mt-1">Especialización: {gen.specializations.options[specialization].name}</p>}</div>
-                                        <button onClick={() => buyGenerator(gen.id, buyAmount)} disabled={!canAfford} className={`text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>Comprar {amountToBuy > 0 ? formatNumber(amountToBuy) : ''}</button>
+                                        <button onClick={() => buyGenerator(gen.id, buyAmount)} disabled={!canAfford} className={buttonClass}>Comprar {amountToBuy > 0 ? formatNumber(amountToBuy) : ''}</button>
                                     </div>
                                     <div className="text-center bg-gray-800 p-1 rounded-md"><p className="text-gray-400 text-sm">Costo: <span className="font-semibold text-white">{formatNumber(totalCost)}</span> Oro</p>{!canAfford && goldPerSecond > 0 && <p className="text-xs text-gray-500">({formatTime(timeToAfford)})</p>}</div>
                                 </div>
@@ -767,4 +770,4 @@ export default function App() {
             </div>
         </>
     );
-}
+                                                }
