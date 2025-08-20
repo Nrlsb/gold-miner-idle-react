@@ -2,7 +2,7 @@ import React from 'react';
 
 // --- Definitions ---
 const OLD_SAVE_KEY_V3 = 'goldMinerIdleSave_React_v3';
-const SAVE_KEY = 'goldMinerIdleSave_React_v5'; // Incremented save key for the new system
+const SAVE_KEY = 'goldMinerIdleSave_React_v6'; // Incremented save key for synergy system
 const PRESTIGE_REQUIREMENT = 1000000;
 const ASCENSION_REQUIREMENT = 1000; // Requirement in Prestige Gems
 
@@ -10,8 +10,8 @@ const ASCENSION_REQUIREMENT = 1000; // Requirement in Prestige Gems
 
 const generatorTypes = [
     { id: 'miner', name: 'Minero Automático', description: 'Genera una pequeña cantidad de oro.', baseCost: 10, baseGps: 0.1, costMultiplier: 1.15 },
-    { id: 'cart', name: 'Carreta de Mina', description: 'Transporta más oro desde la mina.', baseCost: 100, baseGps: 1, costMultiplier: 1.20 },
-    { id: 'excavator', name: 'Excavadora', description: 'Extrae enormes cantidades de oro.', baseCost: 1200, baseGps: 8, costMultiplier: 1.25 },
+    { id: 'cart', name: 'Carreta de Mina', description: 'Transporta más oro. Recibe un bono de los mineros.', baseCost: 100, baseGps: 1, costMultiplier: 1.20 },
+    { id: 'excavator', name: 'Excavadora', description: 'Extrae enormes cantidades de oro. Mejora la búsqueda de recursos.', baseCost: 1200, baseGps: 8, costMultiplier: 1.25 },
     { id: 'geologist', name: 'Geólogo', description: 'Busca recursos automáticamente.', baseCost: 5000, costMultiplier: 1.30, baseRps: { iron: 0.1, coal: 0.05, diamond: 0.001 } }
 ];
 
@@ -36,7 +36,6 @@ const skillTypes = {
     'geology_grants': { name: 'Subsidios Geológicos', description: 'Los Geólogos cuestan un 10% menos.', cost: 8, type: 'cost_reduction', target: 'geologist', value: 0.9, branch: 'prestige', tier: 3, requires: ['science_surplus'] },
 };
 
-// --- NEW: Ascension Upgrades ---
 const ascensionUpgradeTypes = {
     'relic_power': { name: 'Poder de las Reliquias', description: 'Cada Reliquia Celestial también aumenta la producción de oro en un 100%.', cost: 1, type: 'relic_gold_bonus' },
     'gem_mastery': { name: 'Maestría en Gemas', description: 'Las Gemas de Prestigio son un 25% más efectivas.', cost: 2, type: 'gem_effectiveness_bonus', value: 1.25 },
@@ -66,8 +65,8 @@ const getNewGameState = () => ({
     purchasedSkills: [],
     resources: { iron: 0, coal: 0, diamond: 0 },
     craftedArtifacts: [],
-    celestialRelics: 0, // NEW
-    purchasedAscensionUpgrades: [], // NEW
+    celestialRelics: 0,
+    purchasedAscensionUpgrades: [],
     lastSaveTimestamp: Date.now(),
 });
 
@@ -78,16 +77,16 @@ export default function App() {
     const [floatingNumbers, setFloatingNumbers] = React.useState([]);
     const [offlineEarnings, setOfflineEarnings] = React.useState(null);
 
-    // --- REFACTORED: Centralized calculation logic ---
+    // --- Centralized calculation logic ---
     const recalculateValues = React.useCallback((currentState) => {
         // --- Ascension Bonuses ---
         let gemEffectiveness = 1.0;
         if (currentState.purchasedAscensionUpgrades.includes('gem_mastery')) {
             gemEffectiveness = ascensionUpgradeTypes['gem_mastery'].value;
         }
-        let totalGoldMultiplier = 1.0;
+        let totalGoldMultiplierFromAscension = 1.0;
         if (currentState.purchasedAscensionUpgrades.includes('relic_power')) {
-            totalGoldMultiplier *= (1 + currentState.celestialRelics);
+            totalGoldMultiplierFromAscension *= (1 + currentState.celestialRelics);
         }
 
         const currentPrestigeBonus = 1 + (currentState.prestigeGems * 0.05 * gemEffectiveness);
@@ -106,7 +105,7 @@ export default function App() {
         });
         if (currentState.craftedArtifacts.includes('diamond_pickaxe')) gpcMultiplier *= artifactTypes.find(a => a.id === 'diamond_pickaxe').value;
         
-        const goldPerClick = baseGpc * gpcMultiplier * currentPrestigeBonus * totalGoldMultiplier;
+        const goldPerClick = baseGpc * gpcMultiplier * currentPrestigeBonus * totalGoldMultiplierFromAscension;
 
         // --- Gold Per Second Calculation ---
         let baseGps = 0;
@@ -133,11 +132,18 @@ export default function App() {
                 });
                 if (currentState.craftedArtifacts.includes('coal_engine') && type.id === 'cart') generatorMultiplier *= artifactTypes.find(a => a.id === 'coal_engine').value;
 
+                // --- NEW: Synergy Calculation ---
+                if (type.id === 'cart') {
+                    const minerCount = currentState.generators['miner'] || 0;
+                    const synergyBonus = 1 + (Math.floor(minerCount / 50) * 0.10);
+                    generatorMultiplier *= synergyBonus;
+                }
+
                 baseGps += generatorProduction * generatorMultiplier;
             }
         }
         
-        let goldPerSecond = (baseGps * totalGpsMultiplier * currentPrestigeBonus) * totalGoldMultiplier;
+        let goldPerSecond = (baseGps * totalGpsMultiplier * currentPrestigeBonus) * totalGoldMultiplierFromAscension;
         
         if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes['compound_interest'].value;
 
@@ -146,6 +152,7 @@ export default function App() {
 
     // --- Memoized Calculations ---
     const { goldPerClick, goldPerSecond } = React.useMemo(() => recalculateValues(gameState), [gameState, recalculateValues]);
+    
     const prestigeBonus = React.useMemo(() => {
         let gemEffectiveness = 1.0;
         if (gameState.purchasedAscensionUpgrades.includes('gem_mastery')) {
@@ -177,17 +184,28 @@ export default function App() {
         return Math.floor(science);
     }, [gemsToGain, gameState.purchasedSkills]);
     
+    // --- NEW: Synergy calculation for resource finding ---
+    const resourceFindingBonus = React.useMemo(() => {
+        const excavatorCount = gameState.generators['excavator'] || 0;
+        let bonus = 1 + (Math.floor(excavatorCount / 10) * 0.01);
+
+        if (gameState.craftedArtifacts.includes('lucky_geode')) {
+            bonus *= artifactTypes.find(a => a.id === 'lucky_geode').value;
+        }
+        return bonus;
+    }, [gameState.generators, gameState.craftedArtifacts]);
+
     const resourcesPerSecond = React.useMemo(() => {
         const rps = { iron: 0, coal: 0, diamond: 0 };
         const geologistCount = gameState.generators.geologist || 0;
         if (geologistCount > 0) {
             const geologistDef = generatorTypes.find(g => g.id === 'geologist');
             for (const resourceId in geologistDef.baseRps) {
-                rps[resourceId] = geologistCount * geologistDef.baseRps[resourceId];
+                rps[resourceId] = geologistCount * geologistDef.baseRps[resourceId] * resourceFindingBonus;
             }
         }
         return rps;
-    }, [gameState.generators]);
+    }, [gameState.generators, resourceFindingBonus]);
 
 
     // --- Game Logic Functions ---
@@ -199,14 +217,10 @@ export default function App() {
         }
         
         const newResources = { ...gameState.resources };
-        let resourceChanceMultiplier = 1.0;
-        if (gameState.craftedArtifacts.includes('lucky_geode')) {
-            resourceChanceMultiplier = artifactTypes.find(a => a.id === 'lucky_geode').value;
-        }
 
-        if (Math.random() < 0.10 * resourceChanceMultiplier) newResources.iron += 1;
-        if (Math.random() < 0.08 * resourceChanceMultiplier) newResources.coal += 1;
-        if (Math.random() < 0.01 * resourceChanceMultiplier) newResources.diamond += 1;
+        if (Math.random() < 0.10 * resourceFindingBonus) newResources.iron += 1;
+        if (Math.random() < 0.08 * resourceFindingBonus) newResources.coal += 1;
+        if (Math.random() < 0.01 * resourceFindingBonus) newResources.diamond += 1;
 
         setGameState(prev => ({ ...prev, gold: prev.gold + clickValue, resources: newResources }));
 
@@ -244,15 +258,10 @@ export default function App() {
         }
     };
 
-    // --- NEW: Ascension Logic ---
     const buyAscensionUpgrade = (upgradeId) => {
         const upgrade = ascensionUpgradeTypes[upgradeId];
         if (!upgrade || gameState.purchasedAscensionUpgrades.includes(upgradeId) || gameState.celestialRelics < upgrade.cost) return;
-        setGameState(prev => ({
-            ...prev,
-            celestialRelics: prev.celestialRelics - upgrade.cost,
-            purchasedAscensionUpgrades: [...prev.purchasedAscensionUpgrades, upgradeId],
-        }));
+        setGameState(prev => ({ ...prev, celestialRelics: prev.celestialRelics - upgrade.cost, purchasedAscensionUpgrades: [...prev.purchasedAscensionUpgrades, upgradeId] }));
     };
 
     const ascend = () => {
@@ -333,8 +342,9 @@ export default function App() {
         const earnedResources = { iron: 0, coal: 0, diamond: 0 };
         if (geologistCount > 0) {
             const geologistDef = generatorTypes.find(g => g.id === 'geologist');
+            const offlineResourceBonus = 1 + (Math.floor((loadedState.generators['excavator'] || 0) / 10) * 0.01);
             for(const resId in geologistDef.baseRps) {
-                earnedResources[resId] = timeDifferenceSeconds * (geologistDef.baseRps[resId] * geologistCount);
+                earnedResources[resId] = timeDifferenceSeconds * (geologistDef.baseRps[resId] * geologistCount * offlineResourceBonus);
             }
         }
 
@@ -416,7 +426,6 @@ export default function App() {
                                 <div><h2 className="text-lg font-medium text-gray-400">Oro</h2><p className="text-2xl md:text-3xl font-bold text-white">{Math.floor(gameState.gold).toLocaleString('es')}</p></div>
                                 <div><h2 className="text-lg font-medium text-gray-400">Gemas</h2><p className="text-2xl md:text-3xl font-bold text-purple-400">{gameState.prestigeGems}</p></div>
                                 <div><h2 className="text-lg font-medium text-gray-400">Ciencia</h2><p className="text-2xl md:text-3xl font-bold text-cyan-400">{Math.floor(gameState.sciencePoints)}</p></div>
-                                {/* --- NEW: Relics Display --- */}
                                 <div><h2 className="text-lg font-medium text-gray-400">Reliquias</h2><p className="text-2xl md:text-3xl font-bold text-amber-300">{gameState.celestialRelics} 🌟</p></div>
                             </div>
                             <p className="text-sm text-yellow-500 mt-2 text-center">{goldPerSecond.toFixed(1)} oro por segundo</p>
@@ -425,11 +434,52 @@ export default function App() {
                         <button onClick={handleManualClick} className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-4 px-6 rounded-lg text-xl transition transform active:scale-95 shadow-lg shadow-yellow-500/20">Picar Oro (+{Math.round(goldPerClick)})</button>
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Mejoras</h2>{upgradeTypes.map(upgrade => { const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id); const canAfford = gameState.gold >= upgrade.cost; return ( <div key={upgrade.id} className="bg-green-900/40 p-3 rounded-lg border border-green-700/60 flex justify-between items-center"><div><h4 className="font-semibold">{upgrade.name}</h4><p className="text-xs text-gray-400">{upgrade.description}</p></div><button onClick={() => buyUpgrade(upgrade.id)} disabled={isPurchased || !canAfford} className={`bg-green-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-green-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `${upgrade.cost.toLocaleString('es')} Oro`}</button></div>); })}</div>
-                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Generadores</h2>{generatorTypes.map(gen => { const count = gameState.generators[gen.id] || 0; const cost = gen.baseCost * Math.pow(gen.costMultiplier, count); const canAfford = gameState.gold >= cost; const isResourceGen = !!gen.baseRps; return (<div key={gen.id} className="bg-gray-700/50 p-4 rounded-xl space-y-3 border border-gray-600"><div className="flex justify-between items-center"><div><h3 className="text-lg font-semibold">{gen.name}</h3><p className="text-gray-400 text-xs">{gen.description}</p><p className="text-xs text-gray-300">Posees: <span className="font-bold">{count}</span></p></div><button onClick={() => buyGenerator(gen.id)} disabled={!canAfford} className={`text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95` : 'opacity-50 cursor-not-allowed'}`}>Comprar</button></div><div className="text-center bg-gray-800 p-1 rounded-md"><p className="text-gray-400 text-sm">Costo: <span className="font-semibold text-white">{Math.ceil(cost).toLocaleString('es')}</span> Oro</p></div></div>); })}</div>
+                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Generadores</h2>{generatorTypes.map(gen => {
+                                const count = gameState.generators[gen.id] || 0;
+                                let costMultiplier = gen.costMultiplier;
+                                if (gameState.purchasedSkills.includes('geology_grants') && gen.id === 'geologist') {
+                                    costMultiplier *= skillTypes['geology_grants'].value;
+                                }
+                                const cost = gen.baseCost * Math.pow(costMultiplier, count);
+                                const canAfford = gameState.gold >= cost;
+                                const isResourceGen = !!gen.baseRps;
+
+                                // --- NEW: Synergy Display ---
+                                let synergyBonusText = null;
+                                if (gen.id === 'cart') {
+                                    const minerCount = gameState.generators['miner'] || 0;
+                                    const bonus = Math.floor(minerCount / 50) * 10;
+                                    if (bonus > 0) {
+                                        synergyBonusText = <p className="text-xs text-green-400">Bono de Mineros: +{bonus}%</p>;
+                                    }
+                                }
+                                if (gen.id === 'geologist') {
+                                    const bonus = (resourceFindingBonus - 1) * 100;
+                                     if (bonus > 0) {
+                                        synergyBonusText = <p className="text-xs text-green-400">Bono de Excavadoras: +{bonus.toFixed(0)}% recursos</p>;
+                                    }
+                                }
+
+                                return (
+                                <div key={gen.id} className="bg-gray-700/50 p-4 rounded-xl space-y-3 border border-gray-600">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <h3 className="text-lg font-semibold">{gen.name}</h3>
+                                            <p className="text-gray-400 text-xs">{gen.description}</p>
+                                            <p className="text-xs text-gray-300">Posees: <span className="font-bold">{count}</span></p>
+                                            {synergyBonusText}
+                                        </div>
+                                        <button onClick={() => buyGenerator(gen.id)} disabled={!canAfford} className={`text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95` : 'opacity-50 cursor-not-allowed'}`}>Comprar</button>
+                                    </div>
+                                    <div className="text-center bg-gray-800 p-1 rounded-md">
+                                        <p className="text-gray-400 text-sm">Costo: <span className="font-semibold text-white">{Math.ceil(cost).toLocaleString('es')}</span> Oro</p>
+                                    </div>
+                                </div>
+                                );
+                            })}</div>
                         </div>
                         <div className="grid md:grid-cols-2 gap-6 pt-4 border-t border-gray-700">
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300">Prestigio</h2><div className="bg-purple-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia para obtener Gemas y Puntos de Ciencia.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{PRESTIGE_REQUIREMENT.toLocaleString('es')}</span> Oro</p><button onClick={prestige} disabled={gemsToGain <= 0} className={`w-full bg-purple-600 text-white font-bold py-3 px-5 rounded-lg transition ${gemsToGain > 0 ? 'hover:bg-purple-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Prestigio por +{gemsToGain} Gemas y +{scienceToGain} Ciencia</button></div></div>
-                            {/* --- NEW: Ascension Section --- */}
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-amber-300">Ascensión</h2><div className="bg-amber-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia todo (incl. gemas) para obtener Reliquias Celestiales.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{ASCENSION_REQUIREMENT.toLocaleString('es')}</span> Gemas</p><button onClick={ascend} disabled={relicsToGain <= 0} className={`w-full bg-amber-500 text-black font-bold py-3 px-5 rounded-lg transition ${relicsToGain > 0 ? 'hover:bg-amber-600 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Ascender por +{relicsToGain} Reliquias 🌟</button></div></div>
                         </div>
                         <div className="pt-4 border-t border-gray-700"><button onClick={hardReset} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">Reiniciar Partida (Hard Reset)</button></div>
@@ -455,7 +505,6 @@ export default function App() {
                                 ))}
                             </div>
                         </div>
-                        {/* --- NEW: Ascension Upgrades Panel --- */}
                         <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 space-y-4 border border-amber-500/50">
                             <h2 className="text-2xl font-bold text-center text-amber-300 border-b-2 border-gray-700 pb-2 mb-4">Mejoras Celestiales</h2>
                             <div className="space-y-3">
