@@ -1,7 +1,7 @@
 import React from 'react';
 
 // --- Definitions ---
-const SAVE_KEY = 'goldMinerIdleSave_React_v9'; // Incremented save key for QoL features
+const SAVE_KEY = 'goldMinerIdleSave_React_v10'; // Incremented save key for new feature
 const PRESTIGE_REQUIREMENT = 1000000;
 const ASCENSION_REQUIREMENT = 1000;
 
@@ -63,6 +63,8 @@ const skillTypes = {
     'gem_hoarder_1': { name: 'Acumulador de Gemas I', description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.', cost: 2, type: 'prestige_bonus', value: 1, branch: 'prestige', tier: 1, requires: [] },
     'science_surplus': { name: 'Excedente Científico', description: 'Gana un 10% más de Puntos de Ciencia al hacer prestigio.', cost: 5, type: 'science_bonus', value: 1.1, branch: 'prestige', tier: 2, requires: ['gem_hoarder_1'] },
     'geology_grants': { name: 'Subsidios Geológicos', description: 'Los Geólogos cuestan un 10% menos.', cost: 8, type: 'cost_reduction', target: 'geologist', value: 0.9, branch: 'prestige', tier: 3, requires: ['science_surplus'] },
+    // --- NEW SKILL for Auto-buy ---
+    'upgrade_automation': { name: 'Ingeniero de Mejoras', description: 'Desbloquea la compra automática de mejoras de oro.', cost: 15, type: 'unlock_feature', value: 'auto_buyer', branch: 'prestige', tier: 4, requires: ['geology_grants'] },
 };
 
 const ascensionUpgradeTypes = {
@@ -102,6 +104,8 @@ const getNewGameState = () => ({
     goldRush: { active: false, timeLeft: 0, cooldown: 0 },
     activeClickables: [],
     lastSaveTimestamp: Date.now(),
+    // --- NEW STATE for Auto-buy ---
+    autoBuyUpgradesEnabled: false,
 });
 
 // --- NEW FEATURE: Number and Time Formatting ---
@@ -143,7 +147,7 @@ export default function App() {
     const [offlineEarnings, setOfflineEarnings] = React.useState(null);
     const [specializationChoice, setSpecializationChoice] = React.useState(null);
     const [activeTab, setActiveTab] = React.useState('research');
-    const [buyAmount, setBuyAmount] = React.useState(1); // NEW: Buy amount state
+    const [buyAmount, setBuyAmount] = React.useState(1);
 
     // --- Centralized calculation logic ---
     const recalculateValues = React.useCallback((currentState) => {
@@ -318,7 +322,6 @@ export default function App() {
         setTimeout(() => setFloatingNumbers(current => current.filter(n => n.id !== newFloatingNumber.id)), 1000);
     };
 
-    // --- NEW FEATURE: Multi-buy logic for generators ---
     const calculateGeneratorCost = React.useCallback((generatorId, amount) => {
         const generator = generatorTypes.find(g => g.id === generatorId);
         const count = gameState.generators[generatorId] || 0;
@@ -338,7 +341,6 @@ export default function App() {
             if (costMultiplier === 1) {
                 canBuyAmount = Math.floor(currentGold / (generator.baseCost * Math.pow(costMultiplier, count)));
             } else {
-                // Derived from geometric series sum formula
                 const a = generator.baseCost * Math.pow(costMultiplier, count);
                 const r = costMultiplier;
                 const affordableAmount = Math.floor(Math.log( (currentGold * (r - 1)) / a + 1 ) / Math.log(r));
@@ -533,11 +535,28 @@ export default function App() {
     React.useEffect(() => {
         const gameTick = setInterval(() => {
             setGameState(prev => {
-                 const newResources = { ...prev.resources };
+                 // Create a mutable copy of the state for this tick's calculations
+                 let newState = { ...prev };
+                 newState.resources = { ...prev.resources };
+                 newState.purchasedUpgrades = [...prev.purchasedUpgrades];
+
+                 // --- NEW: Auto-buy logic ---
+                 if (newState.autoBuyUpgradesEnabled) {
+                     for (const upgrade of upgradeTypes) {
+                         if (!newState.purchasedUpgrades.includes(upgrade.id) && newState.gold >= upgrade.cost) {
+                             newState.gold -= upgrade.cost;
+                             newState.purchasedUpgrades.push(upgrade.id);
+                             // Only buy one upgrade per tick to make it feel more natural
+                             break; 
+                         }
+                     }
+                 }
+
                  const rps = resourcesPerSecond;
                  for (const resId in rps) {
-                    newResources[resId] = (newResources[resId] || 0) + rps[resId] / 10;
+                    newState.resources[resId] = (newState.resources[resId] || 0) + rps[resId] / 10;
                  }
+                 
                  let newGoldRush = { ...prev.goldRush };
                  if (newGoldRush.active) {
                      newGoldRush.timeLeft -= 0.1;
@@ -560,7 +579,18 @@ export default function App() {
                         if (reward.type === 'flat_relics') newRelics += reward.value;
                     });
                  }
-                 return { ...prev, gold: prev.gold + goldPerSecond / 10, resources: newResources, goldRush: newGoldRush, unlockedAchievements: [...prev.unlockedAchievements, ...newlyUnlocked], prestigeGems: newGems, celestialRelics: newRelics };
+
+                 // Recalculate GPS based on the potentially new state (after auto-buying)
+                 const { goldPerSecond: currentGps } = recalculateValues(newState);
+
+                 return { 
+                     ...newState, 
+                     gold: newState.gold + currentGps / 10,
+                     goldRush: newGoldRush, 
+                     unlockedAchievements: [...prev.unlockedAchievements, ...newlyUnlocked], 
+                     prestigeGems: newGems, 
+                     celestialRelics: newRelics 
+                 };
             });
         }, 100);
         
@@ -576,7 +606,7 @@ export default function App() {
         }, 10000);
 
         return () => { clearInterval(gameTick); clearInterval(clickableInterval); };
-    }, [goldPerSecond, resourcesPerSecond]);
+    }, [goldPerSecond, resourcesPerSecond, recalculateValues]); // Added recalculateValues dependency
 
     const gameStateRef = React.useRef(gameState);
     React.useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -655,7 +685,29 @@ export default function App() {
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300 border-b-2 border-gray-700 pb-2 mb-4">Mejoras</h2>{upgradeTypes.map(upgrade => { const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id); const canAfford = gameState.gold >= upgrade.cost; return ( <div key={upgrade.id} className="bg-green-900/40 p-3 rounded-lg border border-green-700/60 flex justify-between items-center"><div><h4 className="font-semibold">{upgrade.name}</h4><p className="text-xs text-gray-400">{upgrade.description}</p></div><button onClick={() => buyUpgrade(upgrade.id)} disabled={isPurchased || !canAfford} className={`bg-green-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-green-700 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `${formatNumber(upgrade.cost)} Oro`}</button></div>); })}</div>
+                            <div className="space-y-2">
+                                {/* --- NEW: Auto-buy Toggle Switch --- */}
+                                <div className="flex justify-between items-center border-b-2 border-gray-700 pb-2 mb-4">
+                                    <h2 className="text-2xl font-bold text-gray-300">Mejoras</h2>
+                                    {gameState.purchasedSkills.includes('upgrade_automation') && (
+                                        <label htmlFor="auto-buy-toggle" className="flex items-center cursor-pointer">
+                                            <span className="text-sm font-medium text-gray-300 mr-3">Compra Automática</span>
+                                            <div className="relative">
+                                                <input 
+                                                    type="checkbox" 
+                                                    id="auto-buy-toggle" 
+                                                    className="sr-only" 
+                                                    checked={gameState.autoBuyUpgradesEnabled}
+                                                    onChange={() => setGameState(prev => ({ ...prev, autoBuyUpgradesEnabled: !prev.autoBuyUpgradesEnabled }))}
+                                                />
+                                                <div className={`block w-10 h-6 rounded-full ${gameState.autoBuyUpgradesEnabled ? 'bg-green-500' : 'bg-gray-600'}`}></div>
+                                                <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${gameState.autoBuyUpgradesEnabled ? 'transform translate-x-full' : ''}`}></div>
+                                            </div>
+                                        </label>
+                                    )}
+                                </div>
+                                {upgradeTypes.map(upgrade => { const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id); const canAfford = gameState.gold >= upgrade.cost; return ( <div key={upgrade.id} className="bg-green-900/40 p-3 rounded-lg border border-green-700/60 flex justify-between items-center"><div><h4 className="font-semibold">{upgrade.name}</h4><p className="text-xs text-gray-400">{upgrade.description}</p></div><button onClick={() => buyUpgrade(upgrade.id)} disabled={isPurchased || !canAfford} className={`bg-green-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-green-700 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `${formatNumber(upgrade.cost)} Oro`}</button></div>); })}
+                            </div>
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center border-b-2 border-gray-700 pb-2 mb-4">
                                     <h2 className="text-2xl font-bold text-gray-300">Generadores</h2>
@@ -679,7 +731,6 @@ export default function App() {
                                 }
                                 const timeToAfford = (totalCost - gameState.gold) / goldPerSecond;
                                 
-                                // FIX: Corrected the className template literal to avoid syntax errors.
                                 const buttonClass = `text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95 can-afford` : 'opacity-50 cursor-not-allowed'}`;
 
                                 return (
@@ -770,4 +821,4 @@ export default function App() {
             </div>
         </>
     );
-                                                }
+}
