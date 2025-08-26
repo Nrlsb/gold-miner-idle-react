@@ -12,7 +12,12 @@ export const getNewGameState = () => ({
     celestialRelics: 0,
     purchasedAscensionUpgrades: [],
     generatorSpecializations: {},
-    stats: { totalClicks: 0, prestiges: 0, ascensions: 0 },
+    stats: { 
+        totalClicks: 0, 
+        prestiges: 0, 
+        ascensions: 0,
+        totalGoldMined: 0, // Nuevo campo para el ranking
+    },
     unlockedAchievements: [],
     goldRush: { active: false, timeLeft: 0, cooldown: 0 },
     activeClickables: [],

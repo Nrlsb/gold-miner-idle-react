@@ -1,8 +1,7 @@
 // src/components/GameComponent.js
-/* global __app_id */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { signOut } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, collection, query, onSnapshot } from "firebase/firestore";
 
 import { 
     achievementTypes, generatorTypes, upgradeTypes, skillTypes, 
@@ -10,10 +9,9 @@ import {
     PRESTIGE_REQUIREMENT, ASCENSION_REQUIREMENT, GOLD_RUSH 
 } from '../gameData';
 import { getNewGameState, formatNumber, formatTime } from '../utils';
+import RankingComponent from './RankingComponent';
 
 // --- Small Presentational Components ---
-// In a larger app, these could be in their own files inside a 'components/ui' folder
-
 const FloatingNumbers = ({ numbers }) => (
     <>
         {numbers.map(num => (
@@ -80,7 +78,7 @@ const Header = ({ user, gameState, goldPerSecond, prestigeBonus, onSignOut }) =>
         <div className="text-center mb-4">
             <h1 className="text-3xl font-bold text-yellow-400">Gold Miner Idle</h1>
             <div className="flex items-center justify-center gap-4 mt-2">
-                <p className="text-gray-400">Jugador: <span className="font-bold text-gray-200">{user.email}</span></p>
+                <p className="text-gray-400">Jugador: <span className="font-bold text-gray-200">{user.email || `anon-${user.uid.substring(0,6)}`}</span></p>
                 <button onClick={onSignOut} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm transition">Cerrar Sesión</button>
             </div>
         </div>
@@ -105,17 +103,43 @@ const MainActions = ({ onManualClick, onActivateGoldRush, goldPerClick, goldRush
 );
 
 
-const GameComponent = ({ user, initialGameState, db, auth }) => {
+const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     const [gameState, setGameState] = useState(initialGameState);
     const [floatingNumbers, setFloatingNumbers] = useState([]);
     const [offlineEarnings, setOfflineEarnings] = useState(null);
     const [specializationChoice, setSpecializationChoice] = useState(null);
     const [activeTab, setActiveTab] = useState('research');
     const [buyAmount, setBuyAmount] = useState(1);
+    const [ranking, setRanking] = useState([]);
+    const [rankingLoading, setRankingLoading] = useState(true);
 
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const gameStateRef = useRef(gameState);
+    useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
-    // --- Centralized calculation logic ---
+    // --- Obtención de datos del Ranking ---
+    useEffect(() => {
+        if (!db || !appId) return;
+        const rankingColRef = collection(db, `artifacts/${appId}/public/data/rankings`);
+        const q = query(rankingColRef);
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const players = [];
+            querySnapshot.forEach((doc) => {
+                players.push({ id: doc.id, ...doc.data() });
+            });
+            
+            players.sort((a, b) => (b.totalGoldMined || 0) - (a.totalGoldMined || 0));
+            setRanking(players.slice(0, 100));
+            setRankingLoading(false);
+        }, (error) => {
+            console.error("Error al obtener el ranking:", error);
+            setRankingLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [db, appId]);
+
+    // --- Lógica de cálculo centralizada ---
     const recalculateValues = useCallback((currentState) => {
         let gemEffectiveness = 1.0;
         if (currentState.purchasedAscensionUpgrades.includes('gem_mastery')) {
@@ -295,7 +319,11 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
             ...prev, 
             gold: prev.gold + clickValue, 
             resources: newResources,
-            stats: { ...prev.stats, totalClicks: prev.stats.totalClicks + 1 }
+            stats: { 
+                ...prev.stats, 
+                totalClicks: prev.stats.totalClicks + 1,
+                totalGoldMined: (prev.stats.totalGoldMined || 0) + clickValue,
+            }
         }));
 
         const newFloatingNumber = { id: Date.now() + Math.random(), value: `+${formatNumber(clickValue)}`, x: e.clientX, y: e.clientY };
@@ -401,6 +429,7 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
                     newState.sciencePoints = ascensionUpgradeTypes['eternal_knowledge'].value;
                 }
                 newState.stats.ascensions = prev.stats.ascensions + 1;
+                newState.stats.totalGoldMined = prev.stats.totalGoldMined;
                 return newState;
             });
         }
@@ -433,6 +462,7 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
                 newState.purchasedAscensionUpgrades = prev.purchasedAscensionUpgrades;
                 newState.generatorSpecializations = prev.generatorSpecializations;
                 newState.stats = { ...prev.stats, prestiges: prev.stats.prestiges + 1 };
+                newState.stats.totalGoldMined = prev.stats.totalGoldMined;
                 return newState;
             });
         }
@@ -444,6 +474,8 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
             setGameState(newGame);
             const gameDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/gameData`, 'progress');
             await setDoc(gameDocRef, newGame);
+            const rankingDocRef = doc(db, `artifacts/${appId}/public/data/rankings`, user.uid);
+            await setDoc(rankingDocRef, { email: user.email, totalGoldMined: 0 });
         }
     };
 
@@ -457,20 +489,22 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
         if (!clickable) return;
         if (clickable.type === 'nugget') {
             const goldReward = goldPerSecond * 15;
-            setGameState(prev => ({ ...prev, gold: prev.gold + goldReward }));
+            setGameState(prev => ({ 
+                ...prev, 
+                gold: prev.gold + goldReward,
+                stats: {
+                    ...prev.stats,
+                    totalGoldMined: (prev.stats.totalGoldMined || 0) + goldReward
+                }
+            }));
         }
         setGameState(prev => ({ ...prev, activeClickables: prev.activeClickables.filter(c => c.id !== clickableId) }));
     };
     
-    // --- BUG FIX: Offline Progress Effect ---
-    // This useEffect now ONLY runs when the component mounts and receives the initial game state.
     useEffect(() => {
         let loadedState = { ...initialGameState };
-
-        // Calculate gains based on the initial state, not the current one.
         const { goldPerSecond: loadedGps } = recalculateValues(loadedState);
         
-        // We need a separate, one-time calculation for initial resource generation
         const initialResourceFindingBonus = 1 + (Math.floor((loadedState.generators['excavator'] || 0) / 10) * 0.01) * (loadedState.craftedArtifacts.includes('lucky_geode') ? artifactTypes.find(a => a.id === 'lucky_geode').value : 1);
         const initialRps = { iron: 0, coal: 0, diamond: 0 };
         for (const type of generatorTypes) {
@@ -499,6 +533,7 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
 
         if (timeDifferenceSeconds > 5 && (earnedGold > 1 || Object.values(earnedResources).some(r => r > 1))) {
             loadedState.gold += earnedGold;
+            loadedState.stats.totalGoldMined = (loadedState.stats.totalGoldMined || 0) + earnedGold;
             for(const resId in earnedResources) {
                 loadedState.resources[resId] = (loadedState.resources[resId] || 0) + earnedResources[resId];
             }
@@ -506,7 +541,6 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
         }
         
         setGameState(loadedState);
-    // The dependency array is changed to only run this effect once on load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialGameState]);
 
@@ -556,10 +590,15 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
                  }
 
                  const { goldPerSecond: currentGps } = recalculateValues(newState);
+                 const goldEarnedThisTick = currentGps / 10;
 
                  return { 
                      ...newState, 
-                     gold: newState.gold + currentGps / 10,
+                     gold: newState.gold + goldEarnedThisTick,
+                     stats: {
+                        ...newState.stats,
+                        totalGoldMined: (newState.stats.totalGoldMined || 0) + goldEarnedThisTick
+                     },
                      goldRush: newGoldRush, 
                      unlockedAchievements: [...prev.unlockedAchievements, ...newlyUnlocked], 
                      prestigeGems: newGems, 
@@ -582,17 +621,20 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
         return () => { clearInterval(gameTick); clearInterval(clickableInterval); };
     }, [resourcesPerSecond, recalculateValues]);
 
-    const gameStateRef = useRef(gameState);
-    useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
-
     useEffect(() => {
         const saveInterval = setInterval(async () => {
-            if (user && user.uid) {
+            if (user && user.uid && db) {
+                const currentGameState = gameStateRef.current;
                 const gameDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/gameData`, 'progress');
+                const rankingDocRef = doc(db, `artifacts/${appId}/public/data/rankings`, user.uid);
                 try {
-                    await setDoc(gameDocRef, { ...gameStateRef.current, lastSaveTimestamp: Date.now() });
+                    await setDoc(gameDocRef, { ...currentGameState, lastSaveTimestamp: Date.now() });
+                    await setDoc(rankingDocRef, {
+                        email: user.email || `anon-${user.uid.substring(0,6)}`,
+                        totalGoldMined: currentGameState.stats.totalGoldMined || 0
+                    }, { merge: true });
                 } catch (error) {
-                    console.error("Error saving game state:", error);
+                    console.error("Error al guardar el estado del juego:", error);
                 }
             }
         }, 5000);
@@ -632,9 +674,7 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
                             goldPerClick={goldPerClick}
                             goldRush={gameState.goldRush}
                         />
-                        {/* Upgrades and Generators Panels */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Upgrades Panel */}
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center border-b-2 border-gray-700 pb-2 mb-4">
                                     <h2 className="text-2xl font-bold text-gray-300">Mejoras</h2>
@@ -658,7 +698,6 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
                                 {upgradeTypes.map(upgrade => { const isPurchased = gameState.purchasedUpgrades.includes(upgrade.id); const canAfford = gameState.gold >= upgrade.cost; return ( <div key={upgrade.id} className="bg-green-900/40 p-3 rounded-lg border border-green-700/60 flex justify-between items-center"><div><h4 className="font-semibold">{upgrade.name}</h4><p className="text-xs text-gray-400">{upgrade.description}</p></div><button onClick={() => buyUpgrade(upgrade.id)} disabled={isPurchased || !canAfford} className={`bg-green-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-green-700 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `${formatNumber(upgrade.cost)} Oro`}</button></div>); })}
                             </div>
 
-                            {/* Generators Panel */}
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center border-b-2 border-gray-700 pb-2 mb-4">
                                     <h2 className="text-2xl font-bold text-gray-300">Generadores</h2>
@@ -698,22 +737,25 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
                                 );
                             })}</div>
                         </div>
-                        {/* Prestige and Ascension Panels */}
                         <div className="grid md:grid-cols-2 gap-6 pt-4 border-t border-gray-700">
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300">Prestigio</h2><div className="bg-purple-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia para obtener Gemas y Puntos de Ciencia.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{formatNumber(PRESTIGE_REQUIREMENT)}</span> Oro</p><button onClick={prestige} disabled={gemsToGain <= 0} className={`w-full bg-purple-600 text-white font-bold py-3 px-5 rounded-lg transition ${gemsToGain > 0 ? 'hover:bg-purple-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Prestigio por +{formatNumber(gemsToGain)} Gemas y +{formatNumber(scienceToGain)} Ciencia</button></div></div>
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-amber-300">Ascensión</h2><div className="bg-amber-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia todo (incl. gemas) para obtener Reliquias Celestiales.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{formatNumber(ASCENSION_REQUIREMENT)}</span> Gemas</p><button onClick={ascend} disabled={relicsToGain <= 0} className={`w-full bg-amber-500 text-black font-bold py-3 px-5 rounded-lg transition ${relicsToGain > 0 ? 'hover:bg-amber-600 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Ascender por +{relicsToGain} Reliquias 🌟</button></div></div>
                         </div>
                         <div className="pt-4 border-t border-gray-700"><button onClick={hardReset} className="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">Reiniciar Partida (Hard Reset)</button></div>
                     </div>
-                    {/* Sidebar Panel */}
                     <div className="lg:col-span-1 space-y-6 lg:h-fit lg:sticky top-4">
                         <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 space-y-4 border border-gray-700">
                             <div className="flex border-b border-gray-700 overflow-x-auto tab-scroll">
                                 <button onClick={() => setActiveTab('research')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'research' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}>Investigación</button>
+                                <button onClick={() => setActiveTab('ranking')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'ranking' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-400'}`}>Ranking</button>
                                 <button onClick={() => setActiveTab('ascension')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'ascension' ? 'text-amber-300 border-b-2 border-amber-300' : 'text-gray-400'}`}>Celestiales</button>
                                 <button onClick={() => setActiveTab('achievements')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'achievements' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}>Logros</button>
                                 <button onClick={() => setActiveTab('crafting')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'crafting' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400'}`}>Fabricación</button>
                             </div>
+
+                            {activeTab === 'ranking' && (
+                                <RankingComponent ranking={ranking} loading={rankingLoading} currentUserEmail={user.email} />
+                            )}
 
                             {activeTab === 'research' && (
                                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3 gap-4">
