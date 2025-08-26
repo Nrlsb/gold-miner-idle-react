@@ -32,13 +32,13 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // --- Definitions ---
-const PRESTIGE_REQUIREMENT = 100000;
+const PRESTIGE_REQUIREMENT = 1000000;
 const ASCENSION_REQUIREMENT = 1000;
 
 const GOLD_RUSH = {
-    DURATION: 60, // seconds
-    COOLDOWN: 30, // 5 minutes
-    MULTIPLIER: 20,
+    DURATION: 15, // seconds
+    COOLDOWN: 300, // 5 minutes
+    MULTIPLIER: 10,
 };
 
 const achievementTypes = {
