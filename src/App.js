@@ -17,10 +17,14 @@ import {
 
 
 // --- Firebase Configuration ---
-// NOTE: These are placeholders and will be provided by the environment.
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-    ? JSON.parse(__firebase_config) 
-    : { apiKey: "your-api-key", authDomain: "your-auth-domain", projectId: "your-project-id" };
+const firebaseConfig = {
+  apiKey: "AIzaSyDW9F3WKfZTlSOzILrkKSUAmmfQlRajVVg",
+  authDomain: "gold-miner-idle-dev.firebaseapp.com",
+  projectId: "gold-miner-idle-dev",
+  storageBucket: "gold-miner-idle-dev.firebasestorage.app",
+  messagingSenderId: "201203457025",
+  appId: "1:201203457025:web:680eedc6e8439c7d99f400"
+};
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
