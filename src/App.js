@@ -70,7 +70,13 @@ const generatorTypes = [
     },
     { id: 'cart', name: 'Carreta de Mina', description: 'Transporta más oro. Recibe un bono de los mineros.', baseCost: 100, baseGps: 1, costMultiplier: 1.20 },
     { id: 'excavator', name: 'Excavadora', description: 'Extrae enormes cantidades de oro. Mejora la búsqueda de recursos.', baseCost: 1200, baseGps: 8, costMultiplier: 1.25 },
-    { id: 'geologist', name: 'Geólogo', description: 'Busca recursos automáticamente.', baseCost: 5000, costMultiplier: 1.30, baseRps: { iron: 0.1, coal: 0.05, diamond: 0.001 } }
+    // NUEVO GENERADOR 1
+    { id: 'gold_panning_plant', name: 'Planta de Lavado de Oro', description: 'Procesa el mineral para extraer más oro. Mejora a Mineros y Carretas.', baseCost: 150000, baseGps: 50, costMultiplier: 1.30 },
+    { id: 'geologist', name: 'Geólogo', description: 'Busca recursos automáticamente.', baseCost: 5000, costMultiplier: 1.30, baseRps: { iron: 0.1, coal: 0.05, diamond: 0.001 } },
+    // NUEVO GENERADOR 2
+    { id: 'diamond_mine', name: 'Mina de Diamantes', description: 'Extrae oro y diamantes preciosos.', baseCost: 2000000, baseGps: 400, costMultiplier: 1.35, baseRps: { diamond: 0.1 } },
+    // NUEVO GENERADOR 3
+    { id: 'investment_syndicate', name: 'Sindicato de Inversores', description: 'Genera oro basado en tu oro total. ¡El dinero llama al dinero!', baseCost: 50000000, costMultiplier: 1.50, baseGps: 0 }
 ];
 
 const upgradeTypes = [
@@ -79,7 +85,13 @@ const upgradeTypes = [
     { id: 'quality_gears', name: 'Engranajes de Calidad', description: '+10% a la producción de todos los generadores.', cost: 500, type: 'gps_multiplier', value: 1.10 },
     { id: 'bigger_carts', name: 'Carretas más Grandes', description: 'Duplica la producción de las Carretas de Mina.', cost: 1000, type: 'generator_multiplier', target: 'cart', value: 2 },
     { id: 'smart_investments', name: 'Inversiones Inteligentes', description: '+25% a la producción de todos los generadores.', cost: 5000, type: 'gps_multiplier', value: 1.25 },
-    { id: 'diamond_drills', name: 'Taladros de Diamante', description: 'Duplica la producción de las Excavadoras.', cost: 12000, type: 'generator_multiplier', target: 'excavator', value: 2 }
+    { id: 'diamond_drills', name: 'Taladros de Diamante', description: 'Duplica la producción de las Excavadoras.', cost: 12000, type: 'generator_multiplier', target: 'excavator', value: 2 },
+    // NUEVA MEJORA 1
+    { id: 'panning_plant_filters', name: 'Filtros de Alta Eficiencia', description: 'Duplica la producción de las Plantas de Lavado de Oro.', cost: 250000, type: 'generator_multiplier', target: 'gold_panning_plant', value: 2 },
+    // NUEVA MEJORA 2
+    { id: 'industrial_diamond_bits', name: 'Brocas de Diamante Industrial', description: 'Duplica la producción de las Minas de Diamantes.', cost: 4000000, type: 'generator_multiplier', target: 'diamond_mine', value: 2 },
+    // NUEVA MEJORA 3
+    { id: 'insider_trading', name: 'Información Privilegiada', description: 'Aumenta la ganancia del Sindicato de Inversores en un 25%.', cost: 100000000, type: 'generator_multiplier', target: 'investment_syndicate', value: 1.25 }
 ];
 
 const skillTypes = {
@@ -280,6 +292,13 @@ const GameComponent = ({ user, initialGameState }) => {
                     generatorMultiplier *= synergyBonus;
                 }
                 
+                // Synergy for Gold Panning Plant
+                if (type.id === 'miner' || type.id === 'cart') {
+                    const plantCount = currentState.generators['gold_panning_plant'] || 0;
+                    const synergyBonus = 1 + (plantCount * 0.05); // Each plant boosts miners and carts by 5%
+                    generatorMultiplier *= synergyBonus;
+                }
+                
                 const specialization = currentState.generatorSpecializations[type.id];
                 if (specialization === 'elite_miners') generatorMultiplier *= 1.5;
                 else if (specialization === 'iron_miners') generatorMultiplier *= 0.75;
@@ -296,6 +315,17 @@ const GameComponent = ({ user, initialGameState }) => {
         let goldPerSecond = (baseGps * totalGpsMultiplier * currentPrestigeBonus) * totalGoldMultiplierFromAscension;
         
         if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes['compound_interest'].value;
+        
+        // Investment Syndicate GPS calculation
+        const syndicateCount = currentState.generators['investment_syndicate'] || 0;
+        if (syndicateCount > 0) {
+            let syndicateMultiplier = 1.0;
+            if(currentState.purchasedUpgrades.includes('insider_trading')) {
+                syndicateMultiplier = upgradeTypes.find(u => u.id === 'insider_trading').value;
+            }
+            goldPerSecond += (currentState.gold * 0.0001 * syndicateCount * syndicateMultiplier);
+        }
+
 
         if (currentState.goldRush.active) {
             goldPerClick *= GOLD_RUSH.MULTIPLIER;
@@ -350,11 +380,14 @@ const GameComponent = ({ user, initialGameState }) => {
 
     const resourcesPerSecond = React.useMemo(() => {
         const rps = { iron: 0, coal: 0, diamond: 0 };
-        const geologistCount = gameState.generators.geologist || 0;
-        if (geologistCount > 0) {
-            const geologistDef = generatorTypes.find(g => g.id === 'geologist');
-            for (const resourceId in geologistDef.baseRps) {
-                rps[resourceId] = geologistCount * geologistDef.baseRps[resourceId] * resourceFindingBonus;
+        for (const type of generatorTypes) {
+            if (type.baseRps) {
+                const count = gameState.generators[type.id] || 0;
+                if (count > 0) {
+                    for (const resourceId in type.baseRps) {
+                        rps[resourceId] = (rps[resourceId] || 0) + count * type.baseRps[resourceId] * resourceFindingBonus;
+                    }
+                }
             }
         }
         if (gameState.generatorSpecializations['miner'] === 'iron_miners') {
@@ -558,19 +591,12 @@ const GameComponent = ({ user, initialGameState }) => {
         const timeDifferenceSeconds = (timeNow - loadedState.lastSaveTimestamp) / 1000;
         const earnedGold = timeDifferenceSeconds * loadedGps;
 
-        const geologistCount = loadedState.generators.geologist || 0;
-        const earnedResources = { iron: 0, coal: 0, diamond: 0 };
-        if (geologistCount > 0) {
-            const geologistDef = generatorTypes.find(g => g.id === 'geologist');
-            const offlineResourceBonus = 1 + (Math.floor((loadedState.generators['excavator'] || 0) / 10) * 0.01);
-            for(const resId in geologistDef.baseRps) {
-                earnedResources[resId] = timeDifferenceSeconds * (geologistDef.baseRps[resId] * geologistCount * offlineResourceBonus);
-            }
-        }
-        if (loadedState.generatorSpecializations['miner'] === 'iron_miners') {
-            const minerCount = loadedState.generators['miner'] || 0;
-            earnedResources.iron += timeDifferenceSeconds * minerCount * 0.1;
-        }
+        const { iron: loadedRpsIron, coal: loadedRpsCoal, diamond: loadedRpsDiamond } = resourcesPerSecond;
+        const earnedResources = { 
+            iron: timeDifferenceSeconds * loadedRpsIron, 
+            coal: timeDifferenceSeconds * loadedRpsCoal, 
+            diamond: timeDifferenceSeconds * loadedRpsDiamond 
+        };
 
         if (timeDifferenceSeconds > 5 && (earnedGold > 1 || Object.values(earnedResources).some(r => r > 1))) {
             loadedState.gold += earnedGold;
@@ -581,7 +607,7 @@ const GameComponent = ({ user, initialGameState }) => {
         }
         
         setGameState(loadedState);
-    }, [initialGameState, recalculateValues]); // Only run when the initial data from Firestore is loaded
+    }, [initialGameState, recalculateValues, resourcesPerSecond]); // Only run when the initial data from Firestore is loaded
 
     // --- Game Tick Effect ---
     React.useEffect(() => {
@@ -777,6 +803,9 @@ const GameComponent = ({ user, initialGameState }) => {
                                     const bonus = (resourceFindingBonus - 1) * 100;
                                      if (bonus > 0) synergyBonusText = <p className="text-xs text-green-400">Bono de Excavadoras: +{bonus.toFixed(0)}% recursos</p>;
                                 }
+                                if (gen.id === 'gold_panning_plant') {
+                                    synergyBonusText = <p className="text-xs text-green-400">Bono a Mineros/Carretas: +{(count * 5).toFixed(0)}%</p>;
+                                }
                                 const timeToAfford = (totalCost - gameState.gold) / goldPerSecond;
                                 
                                 const buttonClass = `text-white font-bold py-2 px-4 rounded-lg text-sm transition ${isResourceGen ? 'bg-teal-600' : 'bg-blue-600'} ${canAfford ? `${isResourceGen ? 'hover:bg-teal-700' : 'hover:bg-blue-700'} active:scale-95 can-afford` : 'opacity-50 cursor-not-allowed'}`;
@@ -941,4 +970,4 @@ export default function App() {
             {user ? <GameComponent user={user} initialGameState={initialGameState} /> : <AuthComponent setUser={setUser} />}
         </>
     );
-}
+        }
