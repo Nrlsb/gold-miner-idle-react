@@ -1,11 +1,35 @@
 import React from 'react';
+// Firebase Imports
+import { initializeApp } from "firebase/app";
+import { 
+    getAuth, 
+    onAuthStateChanged,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut
+} from "firebase/auth";
+import { 
+    getFirestore, 
+    doc, 
+    setDoc, 
+    getDoc 
+} from "firebase/firestore";
+
+
+// --- Firebase Configuration ---
+// NOTE: These are placeholders and will be provided by the environment.
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+    ? JSON.parse(__firebase_config) 
+    : { apiKey: "your-api-key", authDomain: "your-auth-domain", projectId: "your-project-id" };
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 // --- Definitions ---
-const SAVE_KEY = 'goldMinerIdleSave_React_v10'; // Incremented save key for new feature
 const PRESTIGE_REQUIREMENT = 1000000;
 const ASCENSION_REQUIREMENT = 1000;
 
-// --- NEW FEATURE: Game Data for Achievements & Active Skills ---
 const GOLD_RUSH = {
     DURATION: 15, // seconds
     COOLDOWN: 300, // 5 minutes
@@ -63,7 +87,6 @@ const skillTypes = {
     'gem_hoarder_1': { name: 'Acumulador de Gemas I', description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.', cost: 2, type: 'prestige_bonus', value: 1, branch: 'prestige', tier: 1, requires: [] },
     'science_surplus': { name: 'Excedente Científico', description: 'Gana un 10% más de Puntos de Ciencia al hacer prestigio.', cost: 5, type: 'science_bonus', value: 1.1, branch: 'prestige', tier: 2, requires: ['gem_hoarder_1'] },
     'geology_grants': { name: 'Subsidios Geológicos', description: 'Los Geólogos cuestan un 10% menos.', cost: 8, type: 'cost_reduction', target: 'geologist', value: 0.9, branch: 'prestige', tier: 3, requires: ['science_surplus'] },
-    // --- NEW SKILL for Auto-buy ---
     'upgrade_automation': { name: 'Ingeniero de Mejoras', description: 'Desbloquea la compra automática de mejoras de oro.', cost: 15, type: 'unlock_feature', value: 'auto_buyer', branch: 'prestige', tier: 4, requires: ['geology_grants'] },
 };
 
@@ -104,11 +127,9 @@ const getNewGameState = () => ({
     goldRush: { active: false, timeLeft: 0, cooldown: 0 },
     activeClickables: [],
     lastSaveTimestamp: Date.now(),
-    // --- NEW STATE for Auto-buy ---
     autoBuyUpgradesEnabled: false,
 });
 
-// --- NEW FEATURE: Number and Time Formatting ---
 const numberFormatter = new Intl.NumberFormat('en-US', {
     notation: 'compact',
     compactDisplay: 'short',
@@ -138,16 +159,58 @@ function formatTime(seconds) {
     return parts.slice(0, 2).join(' ');
 }
 
+// --- Auth Component ---
+const AuthComponent = ({ setUser }) => {
+    const [email, setEmail] = React.useState('');
+    const [password, setPassword] = React.useState('');
+    const [isLogin, setIsLogin] = React.useState(true);
+    const [error, setError] = React.useState('');
 
-// --- Main App Component ---
-export default function App() {
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        try {
+            if (isLogin) {
+                await signInWithEmailAndPassword(auth, email, password);
+            } else {
+                await createUserWithEmailAndPassword(auth, email, password);
+            }
+        } catch (err) {
+            setError(err.message);
+        }
+    };
+
+    return (
+        <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
+            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md mx-4 border border-gray-700">
+                <h1 className="text-3xl font-bold text-yellow-400 text-center mb-4">Gold Miner Idle</h1>
+                <p className="text-gray-400 text-center mb-8">Inicia sesión o regístrate para jugar</p>
+                <div className="flex border-b border-gray-600 mb-6">
+                    <button onClick={() => setIsLogin(true)} className={`flex-1 py-2 font-semibold transition ${isLogin ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>Iniciar Sesión</button>
+                    <button onClick={() => setIsLogin(false)} className={`flex-1 py-2 font-semibold transition ${!isLogin ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>Registrarse</button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Correo electrónico" required className="w-full bg-gray-700 text-white p-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500" />
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Contraseña" required className="w-full bg-gray-700 text-white p-3 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500" />
+                    <button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-6 rounded-lg text-lg transition transform active:scale-95 shadow-lg shadow-yellow-500/20">{isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}</button>
+                    {error && <p className="text-red-500 text-center mt-4">{error}</p>}
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// --- Main Game Component ---
+const GameComponent = ({ user, initialGameState }) => {
     // --- State Management ---
-    const [gameState, setGameState] = React.useState(getNewGameState());
+    const [gameState, setGameState] = React.useState(initialGameState);
     const [floatingNumbers, setFloatingNumbers] = React.useState([]);
     const [offlineEarnings, setOfflineEarnings] = React.useState(null);
     const [specializationChoice, setSpecializationChoice] = React.useState(null);
     const [activeTab, setActiveTab] = React.useState('research');
     const [buyAmount, setBuyAmount] = React.useState(1);
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
     // --- Centralized calculation logic ---
     const recalculateValues = React.useCallback((currentState) => {
@@ -457,10 +520,12 @@ export default function App() {
         }
     };
 
-    const hardReset = () => {
+    const hardReset = async () => {
         if (window.confirm("¿Estás seguro de que quieres reiniciar TODO tu progreso? Se perderán incluso las gemas, la ciencia y las reliquias.")) {
-            localStorage.removeItem(SAVE_KEY);
-            setGameState(getNewGameState());
+            const newGame = getNewGameState();
+            setGameState(newGame);
+            const gameDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/gameData`, 'progress');
+            await setDoc(gameDocRef, newGame);
         }
     };
 
@@ -478,18 +543,10 @@ export default function App() {
         }
         setGameState(prev => ({ ...prev, activeClickables: prev.activeClickables.filter(c => c.id !== clickableId) }));
     };
-
-    // --- Effects ---
     
+    // --- Offline Progress Effect ---
     React.useEffect(() => {
-        let loadedState = getNewGameState();
-        try {
-            const savedData = localStorage.getItem(SAVE_KEY);
-            if (savedData) {
-                const parsedData = JSON.parse(savedData);
-                loadedState = { ...getNewGameState(), ...parsedData };
-            }
-        } catch (error) { console.error("Error loading saved game:", error); }
+        let loadedState = { ...initialGameState };
 
         const { goldPerSecond: loadedGps } = recalculateValues(loadedState);
         const timeNow = Date.now();
@@ -510,7 +567,7 @@ export default function App() {
             earnedResources.iron += timeDifferenceSeconds * minerCount * 0.1;
         }
 
-        if (earnedGold > 1 || Object.values(earnedResources).some(r => r > 1)) {
+        if (timeDifferenceSeconds > 5 && (earnedGold > 1 || Object.values(earnedResources).some(r => r > 1))) {
             loadedState.gold += earnedGold;
             for(const resId in earnedResources) {
                 loadedState.resources[resId] = (loadedState.resources[resId] || 0) + earnedResources[resId];
@@ -519,34 +576,21 @@ export default function App() {
         }
         
         setGameState(loadedState);
-    }, [recalculateValues]);
-    
-    React.useEffect(() => {
-        const scriptId = 'tailwind-script';
-        if (!document.getElementById(scriptId)) {
-            const script = document.createElement('script');
-            script.id = scriptId;
-            script.src = 'https://cdn.tailwindcss.com';
-            script.async = true;
-            document.head.appendChild(script);
-        }
-    }, []);
+    }, [initialGameState, recalculateValues]); // Only run when the initial data from Firestore is loaded
 
+    // --- Game Tick Effect ---
     React.useEffect(() => {
         const gameTick = setInterval(() => {
             setGameState(prev => {
-                 // Create a mutable copy of the state for this tick's calculations
                  let newState = { ...prev };
                  newState.resources = { ...prev.resources };
                  newState.purchasedUpgrades = [...prev.purchasedUpgrades];
 
-                 // --- NEW: Auto-buy logic ---
                  if (newState.autoBuyUpgradesEnabled) {
                      for (const upgrade of upgradeTypes) {
                          if (!newState.purchasedUpgrades.includes(upgrade.id) && newState.gold >= upgrade.cost) {
                              newState.gold -= upgrade.cost;
                              newState.purchasedUpgrades.push(upgrade.id);
-                             // Only buy one upgrade per tick to make it feel more natural
                              break; 
                          }
                      }
@@ -580,7 +624,6 @@ export default function App() {
                     });
                  }
 
-                 // Recalculate GPS based on the potentially new state (after auto-buying)
                  const { goldPerSecond: currentGps } = recalculateValues(newState);
 
                  return { 
@@ -606,17 +649,25 @@ export default function App() {
         }, 10000);
 
         return () => { clearInterval(gameTick); clearInterval(clickableInterval); };
-    }, [goldPerSecond, resourcesPerSecond, recalculateValues]); // Added recalculateValues dependency
+    }, [resourcesPerSecond, recalculateValues]);
 
+    // --- Save to Firestore Effect ---
     const gameStateRef = React.useRef(gameState);
     React.useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
     React.useEffect(() => {
-        const saveInterval = setInterval(() => {
-            localStorage.setItem(SAVE_KEY, JSON.stringify({ ...gameStateRef.current, lastSaveTimestamp: Date.now() }));
-        }, 3000);
+        const saveInterval = setInterval(async () => {
+            if (user && user.uid) {
+                const gameDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/gameData`, 'progress');
+                try {
+                    await setDoc(gameDocRef, { ...gameStateRef.current, lastSaveTimestamp: Date.now() });
+                } catch (error) {
+                    console.error("Error saving game state:", error);
+                }
+            }
+        }, 5000); // Save every 5 seconds
         return () => clearInterval(saveInterval);
-    }, []);
+    }, [user, appId]);
 
     const skillBranches = React.useMemo(() => {
         const branches = { clicking: { name: 'Clics', skills: [] }, automation: { name: 'Automatización', skills: [] }, prestige: { name: 'Prestigio', skills: [] } };
@@ -639,19 +690,6 @@ export default function App() {
 
     return (
         <>
-            <style>{`
-                body { font-family: 'Inter', sans-serif; }
-                .floating-number { position: fixed; pointer-events: none; animation: float-up 1s ease-out forwards; font-weight: bold; font-size: 1.5rem; color: #FBBF24; text-shadow: 1px 1px 2px black; z-index: 100; } 
-                .modal-backdrop { animation: fade-in 0.3s ease-out forwards; }
-                .clickable-nugget { position: absolute; cursor: pointer; animation: pulse 2s infinite; }
-                .can-afford { animation: glow 1.5s infinite alternate; }
-                .tab-scroll::-webkit-scrollbar { display: none; }
-                .tab-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-                @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-                @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-                @keyframes float-up { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-50px); opacity: 0; } }
-                @keyframes glow { from { box-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px #fde047, 0 0 8px #fde047; } to { box-shadow: 0 0 4px #fff, 0 0 8px #fff, 0 0 12px #facc15, 0 0 16px #facc15; } }
-            `}</style>
             <SpecializationModal />
             {floatingNumbers.map(num => (<div key={num.id} className="floating-number" style={{ left: num.x, top: num.y }}>{num.value}</div>))}
             {offlineEarnings && (<div className="modal-backdrop fixed inset-0 bg-black/60 flex items-center justify-center z-50"><div className="bg-gray-800 rounded-xl p-8 text-center space-y-4 border border-yellow-400 shadow-lg max-w-md mx-4"><h2 className="text-2xl font-bold text-yellow-400">¡Bienvenido de vuelta!</h2><p className="text-gray-300">Mientras no estabas ({formatTime(offlineEarnings.time)}), has producido:</p><p className="text-4xl font-bold text-white">{formatNumber(offlineEarnings.gold)} Oro</p><div>{Object.entries(offlineEarnings.resources).map(([id, val]) => val > 0 && (<p key={id} className="text-lg text-gray-300">{`+${formatNumber(val)} ${resourceTypes.find(r=>r.id===id).name}`}</p>))}</div><button onClick={() => setOfflineEarnings(null)} className="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-6 rounded-lg text-lg transition transform active:scale-95">¡Genial!</button></div></div>)}
@@ -667,7 +705,13 @@ export default function App() {
             <div className="bg-gradient-to-b from-gray-900 to-gray-800 text-white flex items-start justify-center min-h-screen py-4 sm:py-8 font-sans">
                 <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 p-2 sm:p-4">
                     <div className="lg:col-span-2 bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 space-y-6 border border-gray-700">
-                        <div className="text-center"><h1 className="text-3xl font-bold text-yellow-400">Gold Miner Idle (React)</h1><p className="text-gray-400">¡Conviértete en un magnate del oro!</p></div>
+                        <div className="text-center">
+                            <h1 className="text-3xl font-bold text-yellow-400">Gold Miner Idle</h1>
+                            <div className="flex items-center justify-center gap-4 mt-2">
+                                <p className="text-gray-400">Jugador: <span className="font-bold text-gray-200">{user.email}</span></p>
+                                <button onClick={() => signOut(auth)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm transition">Cerrar Sesión</button>
+                            </div>
+                        </div>
                         <div className="bg-gray-900 p-4 sm:p-6 rounded-xl border border-gray-700 lg:sticky top-4 z-10 shadow-lg">
                             <div className="flex justify-around items-center flex-wrap gap-x-4 gap-y-2">
                                 <div><h2 className="text-base sm:text-lg font-medium text-gray-400">Oro</h2><p className="text-xl sm:text-3xl font-bold text-white" title={Math.floor(gameState.gold).toLocaleString('es')}>{formatNumber(gameState.gold)}</p></div>
@@ -686,7 +730,6 @@ export default function App() {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                {/* --- NEW: Auto-buy Toggle Switch --- */}
                                 <div className="flex justify-between items-center border-b-2 border-gray-700 pb-2 mb-4">
                                     <h2 className="text-2xl font-bold text-gray-300">Mejoras</h2>
                                     {gameState.purchasedSkills.includes('upgrade_automation') && (
@@ -748,7 +791,7 @@ export default function App() {
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300">Prestigio</h2><div className="bg-purple-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia para obtener Gemas y Puntos de Ciencia.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{formatNumber(PRESTIGE_REQUIREMENT)}</span> Oro</p><button onClick={prestige} disabled={gemsToGain <= 0} className={`w-full bg-purple-600 text-white font-bold py-3 px-5 rounded-lg transition ${gemsToGain > 0 ? 'hover:bg-purple-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Prestigio por +{formatNumber(gemsToGain)} Gemas y +{formatNumber(scienceToGain)} Ciencia</button></div></div>
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-amber-300">Ascensión</h2><div className="bg-amber-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia todo (incl. gemas) para obtener Reliquias Celestiales.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{formatNumber(ASCENSION_REQUIREMENT)}</span> Gemas</p><button onClick={ascend} disabled={relicsToGain <= 0} className={`w-full bg-amber-500 text-black font-bold py-3 px-5 rounded-lg transition ${relicsToGain > 0 ? 'hover:bg-amber-600 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Ascender por +{relicsToGain} Reliquias 🌟</button></div></div>
                         </div>
-                        <div className="pt-4 border-t border-gray-700"><button onClick={hardReset} className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">Reiniciar Partida (Hard Reset)</button></div>
+                        <div className="pt-4 border-t border-gray-700"><button onClick={hardReset} className="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">Reiniciar Partida (Hard Reset)</button></div>
                     </div>
                     <div className="lg:col-span-1 space-y-6 lg:h-fit lg:sticky top-4">
                         <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 space-y-4 border border-gray-700">
@@ -819,6 +862,78 @@ export default function App() {
                     </div>
                 </div>
             </div>
+        </>
+    );
+};
+
+
+// --- Main App Component ---
+export default function App() {
+    const [user, setUser] = React.useState(null);
+    const [loading, setLoading] = React.useState(true);
+    const [initialGameState, setInitialGameState] = React.useState(null);
+
+    React.useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (currentUser) {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const gameDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/gameData`, 'progress');
+                const docSnap = await getDoc(gameDocRef);
+
+                if (docSnap.exists()) {
+                    setInitialGameState(docSnap.data());
+                } else {
+                    // If no save data, create a new game state and save it
+                    const newGame = getNewGameState();
+                    await setDoc(gameDocRef, newGame);
+                    setInitialGameState(newGame);
+                }
+                setUser(currentUser);
+            } else {
+                setUser(null);
+                setInitialGameState(null);
+            }
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, []);
+    
+    React.useEffect(() => {
+        const scriptId = 'tailwind-script';
+        if (!document.getElementById(scriptId)) {
+            const script = document.createElement('script');
+            script.id = scriptId;
+            script.src = 'https://cdn.tailwindcss.com';
+            script.async = true;
+            document.head.appendChild(script);
+        }
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
+                <div className="text-2xl font-bold">Cargando...</div>
+            </div>
+        );
+    }
+
+    return (
+        <>
+            <style>{`
+                body { font-family: 'Inter', sans-serif; }
+                .floating-number { position: fixed; pointer-events: none; animation: float-up 1s ease-out forwards; font-weight: bold; font-size: 1.5rem; color: #FBBF24; text-shadow: 1px 1px 2px black; z-index: 100; } 
+                .modal-backdrop { animation: fade-in 0.3s ease-out forwards; }
+                .clickable-nugget { position: absolute; cursor: pointer; animation: pulse 2s infinite; }
+                .can-afford { animation: glow 1.5s infinite alternate; }
+                .tab-scroll::-webkit-scrollbar { display: none; }
+                .tab-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+                @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+                @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes float-up { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-50px); opacity: 0; } }
+                @keyframes glow { from { box-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px #fde047, 0 0 8px #fde047; } to { box-shadow: 0 0 4px #fff, 0 0 8px #fff, 0 0 12px #facc15, 0 0 16px #facc15; } }
+            `}</style>
+            {user ? <GameComponent user={user} initialGameState={initialGameState} /> : <AuthComponent setUser={setUser} />}
         </>
     );
 }
