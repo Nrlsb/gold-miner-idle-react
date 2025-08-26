@@ -106,9 +106,6 @@ const MainActions = ({ onManualClick, onActivateGoldRush, goldPerClick, goldRush
 
 
 const GameComponent = ({ user, initialGameState, db, auth }) => {
-    // ... (All the state and logic from the original GameComponent)
-    // This remains large, but now it's focused on game logic, not auth or UI details.
-    // The next step would be to manage `gameState` with useReducer.
     const [gameState, setGameState] = useState(initialGameState);
     const [floatingNumbers, setFloatingNumbers] = useState([]);
     const [offlineEarnings, setOfflineEarnings] = useState(null);
@@ -465,18 +462,41 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
         setGameState(prev => ({ ...prev, activeClickables: prev.activeClickables.filter(c => c.id !== clickableId) }));
     };
     
+    // --- BUG FIX: Offline Progress Effect ---
+    // This useEffect now ONLY runs when the component mounts and receives the initial game state.
     useEffect(() => {
         let loadedState = { ...initialGameState };
+
+        // Calculate gains based on the initial state, not the current one.
         const { goldPerSecond: loadedGps } = recalculateValues(loadedState);
+        
+        // We need a separate, one-time calculation for initial resource generation
+        const initialResourceFindingBonus = 1 + (Math.floor((loadedState.generators['excavator'] || 0) / 10) * 0.01) * (loadedState.craftedArtifacts.includes('lucky_geode') ? artifactTypes.find(a => a.id === 'lucky_geode').value : 1);
+        const initialRps = { iron: 0, coal: 0, diamond: 0 };
+        for (const type of generatorTypes) {
+            if (type.baseRps) {
+                const count = loadedState.generators[type.id] || 0;
+                if (count > 0) {
+                    for (const resourceId in type.baseRps) {
+                        initialRps[resourceId] = (initialRps[resourceId] || 0) + count * type.baseRps[resourceId] * initialResourceFindingBonus;
+                    }
+                }
+            }
+        }
+        if (loadedState.generatorSpecializations['miner'] === 'iron_miners') {
+            const minerCount = loadedState.generators['miner'] || 0;
+            initialRps.iron += minerCount * 0.1;
+        }
+
         const timeNow = Date.now();
         const timeDifferenceSeconds = (timeNow - loadedState.lastSaveTimestamp) / 1000;
         const earnedGold = timeDifferenceSeconds * loadedGps;
-        const rps = resourcesPerSecond;
         const earnedResources = { 
-            iron: timeDifferenceSeconds * rps.iron, 
-            coal: timeDifferenceSeconds * rps.coal, 
-            diamond: timeDifferenceSeconds * rps.diamond 
+            iron: timeDifferenceSeconds * initialRps.iron, 
+            coal: timeDifferenceSeconds * initialRps.coal, 
+            diamond: timeDifferenceSeconds * initialRps.diamond 
         };
+
         if (timeDifferenceSeconds > 5 && (earnedGold > 1 || Object.values(earnedResources).some(r => r > 1))) {
             loadedState.gold += earnedGold;
             for(const resId in earnedResources) {
@@ -484,8 +504,11 @@ const GameComponent = ({ user, initialGameState, db, auth }) => {
             }
             setOfflineEarnings({ time: timeDifferenceSeconds, gold: earnedGold, resources: earnedResources });
         }
+        
         setGameState(loadedState);
-    }, [initialGameState, recalculateValues, resourcesPerSecond]);
+    // The dependency array is changed to only run this effect once on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialGameState]);
 
     useEffect(() => {
         const gameTick = setInterval(() => {
