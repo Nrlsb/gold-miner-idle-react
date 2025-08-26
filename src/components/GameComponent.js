@@ -1,4 +1,5 @@
 // src/components/GameComponent.js
+/* global __app_id */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { signOut } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
