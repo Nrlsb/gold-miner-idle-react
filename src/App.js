@@ -1,3 +1,4 @@
+/* global __firebase_config, __app_id */
 import React from 'react';
 // Firebase Imports
 import { initializeApp } from "firebase/app";
