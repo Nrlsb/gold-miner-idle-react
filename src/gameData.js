@@ -81,5 +81,8 @@ export const resourceTypes = [
 export const artifactTypes = [
     { id: 'diamond_pickaxe', name: 'Pico de Diamante', description: 'Aumenta permanentemente el oro por clic en un 25%.', cost: { diamond: 100, iron: 500 }, type: 'click_multiplier', value: 1.25 },
     { id: 'coal_engine', name: 'Motor a Carbón', description: 'Duplica la producción de las Carretas de Mina.', cost: { coal: 1000, iron: 2000 }, type: 'generator_multiplier', target: 'cart', value: 2 },
-    { id: 'lucky_geode', name: 'Geoda de la Suerte', description: 'Aumenta la probabilidad de encontrar recursos en un 10%.', cost: { diamond: 500 }, type: 'resource_chance', value: 1.10 }
+    { id: 'lucky_geode', name: 'Geoda de la Suerte', description: 'Aumenta la probabilidad de encontrar recursos en un 10%.', cost: { diamond: 500 }, type: 'resource_chance', value: 1.10 },
+    { id: 'steel_support_beams', name: 'Vigas de Acero', description: 'Reduce el costo de todos los generadores en un 5%.', cost: { iron: 5000, coal: 2500 }, type: 'cost_reduction_all', value: 0.95 },
+    { id: 'automated_geology_maps', name: 'Mapas Geológicos Automatizados', description: 'Los Geólogos producen recursos un 25% más rápido.', cost: { iron: 10000, diamond: 1000 }, type: 'generator_multiplier', target: 'geologist', value: 1.25 },
+    { id: 'golden_prospecting_pan', name: 'Batea Dorada', description: 'Aumenta la producción de las Plantas de Lavado de Oro en un 100%.', cost: { iron: 15000, coal: 5000, diamond: 2500 }, type: 'generator_multiplier', target: 'gold_panning_plant', value: 2.0 }
 ];
