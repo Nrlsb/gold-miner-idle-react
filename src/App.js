@@ -18,14 +18,7 @@ import { getNewGameState } from './utils';
 // --- Configuración de Firebase ---
 let app, auth, db;
 try {
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-        apiKey: "AIzaSyDW9F3WKfZTlSOzILrkKSUAmmfQlRajVVg",
-        authDomain: "gold-miner-idle-dev.firebaseapp.com",
-        projectId: "gold-miner-idle-dev",
-        storageBucket: "gold-miner-idle-dev.firebasestorage.app",
-        messagingSenderId: "201203457025",
-        appId: "1:201203457025:web:680eedc6e8439c7d99f400"
-    };
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
@@ -42,65 +35,70 @@ export default function App() {
 
     useEffect(() => {
         if (!auth || !db) {
+            console.error("Firebase no se ha inicializado correctamente.");
             setLoading(false);
             return;
         };
         
-        // Autenticación automática al cargar la app
-        (async () => {
-             if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                try {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } catch (e) {
-                    console.error("Error al iniciar sesión con token personalizado, intentando anónimo", e);
-                    await signInAnonymously(auth);
-                }
-            } else {
-                 await signInAnonymously(auth);
-            }
-        })();
+        const setupAuthenticationAndLoadData = async () => {
+            // 1. Configurar el listener de estado de autenticación
+            const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+                if (currentUser) {
+                    setUser(currentUser);
+                    // 2. Cargar los datos del juego una vez que el usuario está autenticado
+                    const gameDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/gameData`, 'progress');
+                    const docSnap = await getDoc(gameDocRef);
+                    let gameStateForUser;
 
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            if (currentUser) {
-                // Referencia a los datos privados del juego del usuario
-                const gameDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/gameData`, 'progress');
-                const docSnap = await getDoc(gameDocRef);
-                let gameStateForUser;
+                    if (docSnap.exists()) {
+                        gameStateForUser = docSnap.data();
+                    } else {
+                        const newGame = getNewGameState();
+                        await setDoc(gameDocRef, newGame);
+                        gameStateForUser = newGame;
+                    }
 
-                if (docSnap.exists()) {
-                    gameStateForUser = docSnap.data();
-                } else {
-                    const newGame = getNewGameState();
-                    await setDoc(gameDocRef, newGame);
-                    gameStateForUser = newGame;
-                }
+                    if (!gameStateForUser.stats.totalGoldMined) {
+                        gameStateForUser.stats.totalGoldMined = 0;
+                    }
 
-                // Asegurarse de que el estado del juego tenga el nuevo campo para el ranking
-                if (!gameStateForUser.stats.totalGoldMined) {
-                    gameStateForUser.stats.totalGoldMined = 0;
-                }
+                    setInitialGameState(gameStateForUser);
 
-                setInitialGameState(gameStateForUser);
-
-                // Referencia al documento público del ranking del usuario
-                const rankingDocRef = doc(db, `artifacts/${appId}/public/data/rankings`, currentUser.uid);
-                const rankingSnap = await getDoc(rankingDocRef);
-                if (!rankingSnap.exists()) {
+                    // 3. Crear o actualizar el ranking del usuario
+                    const rankingDocRef = doc(db, `artifacts/${appId}/public/data/rankings`, currentUser.uid);
                     await setDoc(rankingDocRef, {
                         email: currentUser.email || `anon-${currentUser.uid.substring(0,6)}`,
                         totalGoldMined: gameStateForUser.stats.totalGoldMined
-                    });
+                    }, { merge: true });
+
+                } else {
+                    setUser(null);
+                    setInitialGameState(null);
                 }
+                setLoading(false);
+            });
 
-                setUser(currentUser);
-            } else {
-                setUser(null);
-                setInitialGameState(null);
+            // 4. Intentar la autenticación automática
+            try {
+                if (auth.currentUser) {
+                    setLoading(false);
+                    return;
+                }
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Fallo la autenticación automática:", error);
+                setLoading(false);
             }
-            setLoading(false);
-        });
 
-        return () => unsubscribe();
+            return () => unsubscribe();
+        };
+
+        setupAuthenticationAndLoadData();
+
     }, [appId]);
     
     useEffect(() => {
@@ -137,7 +135,10 @@ export default function App() {
                 @keyframes float-up { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-50px); opacity: 0; } }
                 @keyframes glow { from { box-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px #fde047, 0 0 8px #fde047; } to { box-shadow: 0 0 4px #fff, 0 0 8px #fff, 0 0 12px #facc15, 0 0 16px #facc15; } }
             `}</style>
-            {user ? <GameComponent user={user} initialGameState={initialGameState} db={db} auth={auth} appId={appId} /> : <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><div className="text-2xl font-bold">Autenticando...</div></div>}
+            {user && initialGameState ? 
+                <GameComponent user={user} initialGameState={initialGameState} db={db} auth={auth} appId={appId} /> : 
+                <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><div className="text-2xl font-bold">Autenticando...</div></div>
+            }
         </>
     );
 }
