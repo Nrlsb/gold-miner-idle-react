@@ -54,16 +54,136 @@ export const upgradeTypes = [
 ];
 
 export const skillTypes = {
-    'powerful_clicks_1': { name: 'Clics Potenciados I', description: 'Aumenta el oro por clic en un 25%.', cost: 1, type: 'click_bonus', value: 1.25, branch: 'clicking', tier: 1, requires: [] },
-    'critical_click': { name: 'Golpe Crítico', description: 'Tus clics tienen un 2% de probabilidad de generar 10 veces más oro.', cost: 3, type: 'critical_click_chance', value: 0.02, multiplier: 10, branch: 'clicking', tier: 2, requires: ['powerful_clicks_1'] },
-    'powerful_clicks_2': { name: 'Clics Potenciados II', description: 'Aumenta el oro por clic en otro 50%.', cost: 8, type: 'click_bonus', value: 1.5, branch: 'clicking', tier: 3, requires: ['critical_click'] },
-    'efficient_miners_1': { name: 'Minería Eficiente I', description: 'Los Mineros Automáticos producen un 25% más.', cost: 1, type: 'generator_bonus', target: 'miner', value: 1.25, branch: 'automation', tier: 1, requires: [] },
-    'cart_optimization': { name: 'Optimización de Carretas', description: 'Las Carretas de Mina producen un 25% más.', cost: 4, type: 'generator_bonus', target: 'cart', value: 1.25, branch: 'automation', tier: 2, requires: ['efficient_miners_1'] },
-    'compound_interest': { name: 'Interés Compuesto', description: 'Gana un 0.01% de tu oro actual por segundo.', cost: 10, type: 'interest_bonus', value: 0.0001, branch: 'automation', tier: 3, requires: ['cart_optimization'] },
-    'gem_hoarder_1': { name: 'Acumulador de Gemas I', description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.', cost: 2, type: 'prestige_bonus', value: 1, branch: 'prestige', tier: 1, requires: [] },
-    'science_surplus': { name: 'Excedente Científico', description: 'Gana un 10% más de Puntos de Ciencia al hacer prestigio.', cost: 5, type: 'science_bonus', value: 1.1, branch: 'prestige', tier: 2, requires: ['gem_hoarder_1'] },
-    'geology_grants': { name: 'Subsidios Geológicos', description: 'Los Geólogos cuestan un 10% menos.', cost: 8, type: 'cost_reduction', target: 'geologist', value: 0.9, branch: 'prestige', tier: 3, requires: ['science_surplus'] },
-    'upgrade_automation': { name: 'Ingeniero de Mejoras', description: 'Desbloquea la compra automática de mejoras de oro.', cost: 15, type: 'unlock_feature', value: 'auto_buyer', branch: 'prestige', tier: 4, requires: ['geology_grants'] },
+    // Clicking Branch
+    'powerful_clicks_1': { 
+        name: 'Clics Potenciados I', 
+        description: 'Aumenta el oro por clic en un 25%.', 
+        cost: 1, 
+        type: 'click_bonus', 
+        value: 1.25, 
+        branch: 'clicking', 
+        requires: [],
+        position: { x: 0, y: 0 } 
+    },
+    'critical_click': { 
+        name: 'Golpe Crítico', 
+        description: 'Tus clics tienen un 2% de probabilidad de generar 10 veces más oro.', 
+        cost: 3, 
+        type: 'critical_click_chance', 
+        value: 0.02, 
+        multiplier: 10, 
+        branch: 'clicking', 
+        requires: ['powerful_clicks_1'],
+        position: { x: 0, y: 1 } 
+    },
+    'powerful_clicks_2': { 
+        name: 'Clics Potenciados II', 
+        description: 'Aumenta el oro por clic en otro 50%.', 
+        cost: 8, 
+        type: 'click_bonus', 
+        value: 1.5, 
+        branch: 'clicking', 
+        requires: ['critical_click'],
+        position: { x: 0, y: 2 } 
+    },
+    'click_frenzy': {
+        name: 'Frenesí de Clics',
+        description: 'Cada clic tiene una probabilidad del 0.5% de iniciar una mini Fiebre del Oro de 5 segundos.',
+        cost: 15,
+        type: 'click_frenzy_chance',
+        value: 0.005,
+        branch: 'clicking',
+        requires: ['powerful_clicks_2'],
+        position: { x: 0, y: 3 }
+    },
+
+    // Automation Branch
+    'efficient_miners_1': { 
+        name: 'Minería Eficiente I', 
+        description: 'Los Mineros Automáticos producen un 25% más.', 
+        cost: 1, 
+        type: 'generator_bonus', 
+        target: 'miner', 
+        value: 1.25, 
+        branch: 'automation', 
+        requires: [],
+        position: { x: 1, y: 0 } 
+    },
+    'cart_optimization': { 
+        name: 'Optimización de Carretas', 
+        description: 'Las Carretas de Mina producen un 25% más.', 
+        cost: 4, 
+        type: 'generator_bonus', 
+        target: 'cart', 
+        value: 1.25, 
+        branch: 'automation', 
+        requires: ['efficient_miners_1'],
+        position: { x: 1, y: 1 } 
+    },
+     'excavator_synergy': {
+        name: 'Sinergia de Excavadoras',
+        description: 'Las excavadoras aumentan la producción de los mineros y las carretas en un 10%.',
+        cost: 7,
+        type: 'synergy_bonus',
+        targets: ['miner', 'cart'],
+        value: 1.10,
+        branch: 'automation',
+        requires: ['cart_optimization'],
+        position: { x: 1, y: 2 }
+    },
+    'compound_interest': { 
+        name: 'Interés Compuesto', 
+        description: 'Gana un 0.01% de tu oro actual por segundo.', 
+        cost: 10, 
+        type: 'interest_bonus', 
+        value: 0.0001, 
+        branch: 'automation', 
+        requires: ['excavator_synergy'],
+        position: { x: 1, y: 3 } 
+    },
+
+    // Prestige Branch
+    'gem_hoarder_1': { 
+        name: 'Acumulador de Gemas I', 
+        description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.', 
+        cost: 2, 
+        type: 'prestige_bonus', 
+        value: 1, 
+        branch: 'prestige', 
+        requires: [],
+        position: { x: 2, y: 0 } 
+    },
+    'science_surplus': { 
+        name: 'Excedente Científico', 
+        description: 'Gana un 10% más de Puntos de Ciencia al hacer prestigio.', 
+        cost: 5, 
+        type: 'science_bonus', 
+        value: 1.1, 
+        branch: 'prestige', 
+        requires: ['gem_hoarder_1'],
+        position: { x: 2, y: 1 } 
+    },
+    'geology_grants': { 
+        name: 'Subsidios Geológicos', 
+        description: 'Los Geólogos cuestan un 10% menos.', 
+        cost: 8, 
+        type: 'cost_reduction', 
+        target: 'geologist', 
+        value: 0.9, 
+        branch: 'prestige', 
+        requires: ['science_surplus'],
+        position: { x: 2, y: 2 } 
+    },
+    'upgrade_automation': { 
+        name: 'Ingeniero de Mejoras', 
+        description: 'Desbloquea la compra automática de mejoras de oro.', 
+        cost: 15, 
+        type: 'unlock_feature', 
+        value: 'auto_buyer', 
+        branch: 'prestige', 
+        requires: ['geology_grants'],
+        position: { x: 2, y: 3 } 
+    },
 };
 
 export const ascensionUpgradeTypes = {

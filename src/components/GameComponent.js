@@ -11,6 +11,7 @@ import {
 import { getNewGameState, formatNumber, formatTime } from '../utils';
 import RankingComponent from './RankingComponent';
 import MissionsComponent from './MissionsComponent';
+import SkillTreeComponent from './SkillTreeComponent';
 
 // --- Icon Component ---
 const Icon = ({ name, className = "h-5 w-5" }) => {
@@ -249,6 +250,10 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                     const ach = achievementTypes[achId];
                     if (ach.reward.type === 'generator_multiplier' && ach.reward.target === type.id) generatorMultiplier *= ach.reward.value;
                 });
+                
+                if ((type.id === 'miner' || type.id === 'cart') && currentState.purchasedSkills.includes('excavator_synergy')) {
+                    generatorMultiplier *= skillTypes['excavator_synergy'].value;
+                }
 
                 baseGps += generatorProduction * generatorMultiplier;
             }
@@ -346,6 +351,13 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             if (Math.random() < skill.value) clickValue *= skill.multiplier;
         }
         
+        if (gameState.purchasedSkills.includes('click_frenzy') && !gameState.goldRush.active) {
+            const skill = skillTypes['click_frenzy'];
+            if (Math.random() < skill.value) {
+                setGameState(prev => ({ ...prev, goldRush: { ...prev.goldRush, active: true, timeLeft: 5, cooldown: prev.goldRush.cooldown } }));
+            }
+        }
+
         const newResources = { ...gameState.resources };
         if (Math.random() < 0.10 * resourceFindingBonus) newResources.iron += 1;
         if (Math.random() < 0.08 * resourceFindingBonus) newResources.coal += 1;
@@ -677,16 +689,6 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         return () => clearInterval(saveInterval);
     }, [user, appId, db]);
 
-    const skillBranches = useMemo(() => {
-        const branches = { clicking: { name: 'Clics', skills: [] }, automation: { name: 'Automatización', skills: [] }, prestige: { name: 'Prestigio', skills: [] } };
-        for (const skillId in skillTypes) {
-            const skill = { ...skillTypes[skillId], id: skillId };
-            if (branches[skill.branch]) branches[skill.branch].skills.push(skill);
-        }
-        for (const branch in branches) branches[branch].skills.sort((a, b) => a.tier - b.tier);
-        return branches;
-    }, []);
-
     const tabConfig = {
         research: { name: 'Investigación', icon: 'research', color: 'cyan' },
         ranking: { name: 'Ranking', icon: 'ranking', color: 'green' },
@@ -813,23 +815,11 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                             )}
 
                             {activeTab === 'research' && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3 gap-4">
-                                {Object.values(skillBranches).map(branch => (
-                                    <div key={branch.name} className="space-y-3">
-                                        <h3 className="text-lg font-semibold text-center text-cyan-200">{branch.name}</h3>
-                                        {branch.skills.map(skill => {
-                                            const isPurchased = gameState.purchasedSkills.includes(skill.id);
-                                            const requirementsMet = skill.requires.every(reqId => gameState.purchasedSkills.includes(reqId));
-                                            const canAfford = gameState.sciencePoints >= skill.cost;
-                                            const isLocked = !requirementsMet;
-                                            return (<div key={skill.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isPurchased ? 'bg-cyan-900/50 border-cyan-700/80' : isLocked ? 'bg-gray-800/60 border-gray-700 opacity-60' : 'bg-gray-700/50 border-gray-600'}`}>
-                                                <div className="flex-grow"><h4 className={`font-semibold ${isLocked ? 'text-gray-400' : 'text-cyan-300'}`}>{skill.name}</h4><p className="text-xs text-gray-400 mt-1">{skill.description}</p>{isLocked && <p className="text-xs text-red-400 mt-1">Requiere: {skill.requires.map(reqId => skillTypes[reqId].name).join(', ')}</p>}</div>
-                                                <button onClick={() => buySkill(skill.id)} disabled={isPurchased || isLocked || !canAfford} className={`w-full mt-3 font-bold py-2 px-4 rounded-lg text-sm transition ${isPurchased ? 'bg-gray-600 opacity-70 cursor-not-allowed' : (canAfford && !isLocked) ? 'bg-cyan-600 hover:bg-cyan-700 active:scale-95' : 'bg-cyan-800/50 opacity-50 cursor-not-allowed'}`}>{isPurchased ? 'Comprado' : `Costo: ${formatNumber(skill.cost)} Ciencia`}</button>
-                                            </div>);
-                                        })}
-                                    </div>
-                                ))}
-                                </div>
+                                <SkillTreeComponent 
+                                    purchasedSkills={gameState.purchasedSkills}
+                                    sciencePoints={gameState.sciencePoints}
+                                    onBuySkill={buySkill}
+                                />
                             )}
 
                             {activeTab === 'ascension' && (
