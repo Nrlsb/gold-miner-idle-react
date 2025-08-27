@@ -5,11 +5,12 @@ import { doc, setDoc, collection, query, onSnapshot } from "firebase/firestore";
 
 import { 
     achievementTypes, generatorTypes, upgradeTypes, skillTypes, 
-    ascensionUpgradeTypes, resourceTypes, artifactTypes, 
+    ascensionUpgradeTypes, resourceTypes, artifactTypes, missionTypes,
     PRESTIGE_REQUIREMENT, ASCENSION_REQUIREMENT, GOLD_RUSH 
 } from '../gameData';
 import { getNewGameState, formatNumber, formatTime } from '../utils';
 import RankingComponent from './RankingComponent';
+import MissionsComponent from './MissionsComponent';
 
 // --- Icon Component ---
 const Icon = ({ name, className = "h-5 w-5" }) => {
@@ -24,6 +25,7 @@ const Icon = ({ name, className = "h-5 w-5" }) => {
         ascension: <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />,
         achievements: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />,
         crafting: <path strokeLinecap="round" strokeLinejoin="round" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />,
+        missions: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
     };
 
     const isFilled = name === 'pickaxe';
@@ -690,6 +692,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         ranking: { name: 'Ranking', icon: 'ranking', color: 'green' },
         ascension: { name: 'Celestiales', icon: 'ascension', color: 'amber' },
         achievements: { name: 'Logros', icon: 'achievements', color: 'yellow' },
+        missions: { name: 'Misiones', icon: 'missions', color: 'indigo' },
         crafting: { name: 'Fabricación', icon: 'crafting', color: 'orange' },
     };
 
@@ -803,6 +806,10 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
 
                             {activeTab === 'ranking' && (
                                 <RankingComponent ranking={ranking} loading={rankingLoading} currentUserEmail={user.email} />
+                            )}
+                            
+                            {activeTab === 'missions' && (
+                                <MissionsComponent missions={gameState.missions} onClaimMission={() => {}} />
                             )}
 
                             {activeTab === 'research' && (

@@ -86,3 +86,9 @@ export const artifactTypes = [
     { id: 'automated_geology_maps', name: 'Mapas Geológicos Automatizados', description: 'Los Geólogos producen recursos un 25% más rápido.', cost: { iron: 10000, diamond: 1000 }, type: 'generator_multiplier', target: 'geologist', value: 1.25 },
     { id: 'golden_prospecting_pan', name: 'Batea Dorada', description: 'Aumenta la producción de las Plantas de Lavado de Oro en un 100%.', cost: { iron: 15000, coal: 5000, diamond: 2500 }, type: 'generator_multiplier', target: 'gold_panning_plant', value: 2.0 }
 ];
+
+export const missionTypes = [
+    { id: 'reach_gold', name: 'Alcanzar Oro', description: (val) => `Alcanza ${val} de oro.`, type: 'gold', tiers: [1000, 10000, 100000, 1e6, 1e7, 1e9, 1e12] },
+    { id: 'own_generators', name: 'Poseer Generadores', description: (val, gen) => `Posee ${val} ${gen}.`, type: 'generator', tiers: [10, 25, 50, 100, 200, 500] },
+    { id: 'total_clicks', name: 'Clics Totales', description: (val) => `Haz clic un total de ${val} veces.`, type: 'clicks', tiers: [100, 500, 1000, 5000, 10000, 50000] },
+];
