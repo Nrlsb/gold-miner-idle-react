@@ -12,7 +12,6 @@ import {
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 // Importaciones de los componentes
-import AuthComponent from './components/AuthComponent';
 import GameComponent from './components/GameComponent';
 import { getNewGameState } from './utils';
 
@@ -46,6 +45,20 @@ export default function App() {
             setLoading(false);
             return;
         };
+        
+        // Autenticación automática al cargar la app
+        (async () => {
+             if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                try {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } catch (e) {
+                    console.error("Error al iniciar sesión con token personalizado, intentando anónimo", e);
+                    await signInAnonymously(auth);
+                }
+            } else {
+                 await signInAnonymously(auth);
+            }
+        })();
 
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
@@ -86,21 +99,6 @@ export default function App() {
             }
             setLoading(false);
         });
-        
-        // Autenticación
-        (async () => {
-             if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                try {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } catch (e) {
-                    console.error("Error al iniciar sesión con token personalizado, intentando anónimo", e);
-                    await signInAnonymously(auth);
-                }
-            } else {
-                 await signInAnonymously(auth);
-            }
-        })();
-
 
         return () => unsubscribe();
     }, [appId]);
@@ -139,7 +137,7 @@ export default function App() {
                 @keyframes float-up { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-50px); opacity: 0; } }
                 @keyframes glow { from { box-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px #fde047, 0 0 8px #fde047; } to { box-shadow: 0 0 4px #fff, 0 0 8px #fff, 0 0 12px #facc15, 0 0 16px #facc15; } }
             `}</style>
-            {user ? <GameComponent user={user} initialGameState={initialGameState} db={db} auth={auth} appId={appId} /> : <AuthComponent auth={auth} />}
+            {user ? <GameComponent user={user} initialGameState={initialGameState} db={db} auth={auth} appId={appId} /> : <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><div className="text-2xl font-bold">Autenticando...</div></div>}
         </>
     );
 }
