@@ -13,6 +13,7 @@ import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 // Importaciones de los componentes
 import GameComponent from './components/GameComponent';
+import AuthComponent from './components/AuthComponent';
 import { getNewGameState } from './utils';
 
 // --- Configuración de Firebase ---
@@ -38,6 +39,7 @@ export default function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [initialGameState, setInitialGameState] = useState(null);
+    const [authError, setAuthError] = useState(null);
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
     useEffect(() => {
@@ -52,6 +54,7 @@ export default function App() {
             const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
                 if (currentUser) {
                     setUser(currentUser);
+                    setAuthError(null);
                     // 2. Cargar los datos del juego una vez que el usuario está autenticado
                     const gameDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/gameData`, 'progress');
                     const docSnap = await getDoc(gameDocRef);
@@ -94,10 +97,17 @@ export default function App() {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
-                    await signInAnonymously(auth);
+                    // No intentar el inicio de sesión anónimo si no hay token, 
+                    // en su lugar, mostrar el componente de autenticación.
+                    setLoading(false);
                 }
             } catch (error) {
                 console.error("Fallo la autenticación automática:", error);
+                if (error.code === 'auth/admin-restricted-operation') {
+                    setAuthError("El inicio de sesión anónimo no está habilitado. Por favor, inicia sesión.");
+                } else {
+                    setAuthError(error.message);
+                }
                 setLoading(false);
             }
 
@@ -130,13 +140,26 @@ export default function App() {
         }
     }, []);
 
-    if (loading || (user && !initialGameState)) {
+    if (loading) {
         return (
             <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
                 <div className="text-2xl font-bold">Cargando...</div>
             </div>
         );
     }
+    
+    if (!user) {
+        return <AuthComponent auth={auth} error={authError} />;
+    }
+
+    if (!initialGameState) {
+        return (
+            <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
+                <div className="text-2xl font-bold">Cargando datos del juego...</div>
+            </div>
+        );
+    }
+
 
     return (
         <>
@@ -165,10 +188,7 @@ export default function App() {
                     animation: mine-click 0.15s ease-out;
                 }
             `}</style>
-            {user && initialGameState ? 
-                <GameComponent user={user} initialGameState={initialGameState} db={db} auth={auth} appId={appId} /> : 
-                <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white"><div className="text-2xl font-bold">Autenticando...</div></div>
-            }
+            <GameComponent user={user} initialGameState={initialGameState} db={db} auth={auth} appId={appId} />
         </>
     );
 }
