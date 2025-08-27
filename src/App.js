@@ -109,6 +109,7 @@ export default function App() {
     }, [appId]);
     
     useEffect(() => {
+        // Carga de Tailwind CSS
         const scriptId = 'tailwind-script';
         if (!document.getElementById(scriptId)) {
             const script = document.createElement('script');
@@ -116,6 +117,16 @@ export default function App() {
             script.src = 'https://cdn.tailwindcss.com';
             script.async = true;
             document.head.appendChild(script);
+        }
+
+        // Carga de Google Fonts
+        const fontLinkId = 'google-font-link';
+        if (!document.getElementById(fontLinkId)) {
+            const link = document.createElement('link');
+            link.id = fontLinkId;
+            link.rel = 'stylesheet';
+            link.href = 'https://fonts.googleapis.com/css2?family=Cutive+Mono&display=swap';
+            document.head.appendChild(link);
         }
     }, []);
 
@@ -130,7 +141,11 @@ export default function App() {
     return (
         <>
             <style>{`
-                body { font-family: 'Inter', sans-serif; }
+                body { 
+                    font-family: 'Cutive Mono', monospace;
+                    background-color: #030712; /* bg-gray-950 */
+                    background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%231f2937' fill-opacity='0.6' fill-rule='evenodd'%3E%3Cpath d='M0 40L40 0H20L0 20M40 40V20L20 40'/%3E%3C/g%3E%3C/svg%3E");
+                }
                 .floating-number { position: fixed; pointer-events: none; animation: float-up 1s ease-out forwards; font-weight: bold; font-size: 1.5rem; color: #FBBF24; text-shadow: 1px 1px 2px black; z-index: 100; } 
                 .modal-backdrop { animation: fade-in 0.3s ease-out forwards; }
                 .clickable-nugget { position: absolute; cursor: pointer; animation: pulse 2s infinite; }
@@ -141,6 +156,14 @@ export default function App() {
                 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
                 @keyframes float-up { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-50px); opacity: 0; } }
                 @keyframes glow { from { box-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px #fde047, 0 0 8px #fde047; } to { box-shadow: 0 0 4px #fff, 0 0 8px #fff, 0 0 12px #facc15, 0 0 16px #facc15; } }
+                @keyframes mine-click {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(0.95) rotate(-2deg); }
+                    100% { transform: scale(1); }
+                }
+                .mine-button-animation {
+                    animation: mine-click 0.15s ease-out;
+                }
             `}</style>
             {user && initialGameState ? 
                 <GameComponent user={user} initialGameState={initialGameState} db={db} auth={auth} appId={appId} /> : 

@@ -11,6 +11,30 @@ import {
 import { getNewGameState, formatNumber, formatTime } from '../utils';
 import RankingComponent from './RankingComponent';
 
+// --- Icon Component ---
+const Icon = ({ name, className = "h-5 w-5" }) => {
+    const icons = {
+        gold: <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
+        gem: <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />,
+        science: <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />,
+        relic: <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />,
+        pickaxe: <path d="M19.9,6.31l-5.66,5.66-2.12-2.12,5.66-5.66a2,2,0,0,1,2.83,0,2,2,0,0,1,0,2.83Z M3,14.07l5.66-5.66,2.12,2.12L5.12,16.19a2,2,0,0,1-2.83,0,2,2,0,0,1,0-2.83Z M12.24,8.54,9.41,11.36l3.54,3.54,2.83-2.83Z M9.59,18.12l-1-1a1,1,0,0,0-1.41,0L3.3,20.94a1,1,0,0,0,0,1.41,1,1,0,0,0,1.41,0l3.88-3.88a1,1,0,0,0,0-1.41A1,1,0,0,0,9.59,17.12Z" />,
+        research: <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />,
+        ranking: <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />,
+        ascension: <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />,
+        achievements: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />,
+        crafting: <path strokeLinecap="round" strokeLinejoin="round" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />,
+    };
+
+    const isFilled = name === 'pickaxe';
+
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" className={className} fill={isFilled ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={isFilled ? 0 : 1.5}>
+            {icons[name]}
+        </svg>
+    );
+};
+
 // --- Small Presentational Components ---
 const FloatingNumbers = ({ numbers }) => (
     <>
@@ -74,28 +98,34 @@ const Clickables = ({ clickables, onClick }) => (
 );
 
 const Header = ({ user, gameState, goldPerSecond, prestigeBonus, onSignOut }) => (
-     <div className="bg-gray-900 p-4 sm:p-6 rounded-xl border border-gray-700 lg:sticky top-4 z-10 shadow-lg">
+     <div className="bg-gray-900/50 backdrop-blur-sm p-4 sm:p-6 rounded-xl border border-gray-700 lg:sticky top-4 z-10 shadow-lg">
         <div className="text-center mb-4">
-            <h1 className="text-3xl font-bold text-yellow-400">Gold Miner Idle</h1>
+            <h1 className="text-3xl font-bold text-yellow-400 tracking-wider">Gold Miner Idle</h1>
             <div className="flex items-center justify-center gap-4 mt-2">
                 <p className="text-gray-400">Jugador: <span className="font-bold text-gray-200">{user.email || `anon-${user.uid.substring(0,6)}`}</span></p>
                 <button onClick={onSignOut} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm transition">Cerrar Sesión</button>
             </div>
         </div>
-        <div className="flex justify-around items-center flex-wrap gap-x-4 gap-y-2">
-            <div><h2 className="text-base sm:text-lg font-medium text-gray-400">Oro</h2><p className="text-xl sm:text-3xl font-bold text-white" title={Math.floor(gameState.gold).toLocaleString('es')}>{formatNumber(gameState.gold)}</p></div>
-            <div><h2 className="text-base sm:text-lg font-medium text-gray-400">Gemas</h2><p className="text-xl sm:text-3xl font-bold text-purple-400">{formatNumber(gameState.prestigeGems)}</p></div>
-            <div><h2 className="text-base sm:text-lg font-medium text-gray-400">Ciencia</h2><p className="text-xl sm:text-3xl font-bold text-cyan-400">{formatNumber(gameState.sciencePoints)}</p></div>
-            <div><h2 className="text-base sm:text-lg font-medium text-gray-400">Reliquias</h2><p className="text-xl sm:text-3xl font-bold text-amber-300">{gameState.celestialRelics} 🌟</p></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div className="bg-black/20 p-2 rounded-lg"><h2 className="text-sm sm:text-base font-medium text-gray-400 flex items-center justify-center gap-1"><Icon name="gold" className="h-5 w-5 text-yellow-400"/>Oro</h2><p className="text-lg sm:text-2xl font-bold text-white" title={Math.floor(gameState.gold).toLocaleString('es')}>{formatNumber(gameState.gold)}</p></div>
+            <div className="bg-black/20 p-2 rounded-lg"><h2 className="text-sm sm:text-base font-medium text-gray-400 flex items-center justify-center gap-1"><Icon name="gem" className="h-5 w-5 text-purple-400"/>Gemas</h2><p className="text-lg sm:text-2xl font-bold text-purple-400">{formatNumber(gameState.prestigeGems)}</p></div>
+            <div className="bg-black/20 p-2 rounded-lg"><h2 className="text-sm sm:text-base font-medium text-gray-400 flex items-center justify-center gap-1"><Icon name="science" className="h-5 w-5 text-cyan-400"/>Ciencia</h2><p className="text-lg sm:text-2xl font-bold text-cyan-400">{formatNumber(gameState.sciencePoints)}</p></div>
+            <div className="bg-black/20 p-2 rounded-lg"><h2 className="text-sm sm:text-base font-medium text-gray-400 flex items-center justify-center gap-1"><Icon name="relic" className="h-5 w-5 text-amber-300"/>Reliquias</h2><p className="text-lg sm:text-2xl font-bold text-amber-300">{gameState.celestialRelics}</p></div>
         </div>
-        <p className="text-sm text-yellow-500 mt-2 text-center">{formatNumber(goldPerSecond)} oro por segundo</p>
+        <p className="text-sm text-yellow-500 mt-3 text-center">{formatNumber(goldPerSecond)} oro por segundo</p>
         <p className="text-sm text-purple-300 mt-1 text-center">Bono de prestigio: +{((prestigeBonus - 1) * 100).toFixed(0)}%</p>
     </div>
 );
 
-const MainActions = ({ onManualClick, onActivateGoldRush, goldPerClick, goldRush }) => (
+const MainActions = ({ onManualClick, onActivateGoldRush, goldPerClick, goldRush, isMining }) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button onClick={onManualClick} className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 sm:py-4 px-6 rounded-lg text-lg sm:text-xl transition transform active:scale-95 shadow-lg shadow-yellow-500/20">Picar Oro (+{formatNumber(goldPerClick)})</button>
+        <button 
+            onClick={onManualClick} 
+            className={`w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 sm:py-4 px-6 rounded-lg text-lg sm:text-xl transition-transform duration-75 active:scale-95 active:brightness-90 shadow-lg shadow-yellow-500/20 flex items-center justify-center gap-2 ${isMining ? 'mine-button-animation' : ''}`}
+        >
+            <Icon name="pickaxe" className="h-7 w-7"/>
+            Picar Oro (+{formatNumber(goldPerClick)})
+        </button>
         <button onClick={onActivateGoldRush} disabled={goldRush.cooldown > 0 || goldRush.active} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 sm:py-4 px-6 rounded-lg text-lg sm:text-xl transition transform active:scale-95 shadow-lg shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
             {goldRush.active ? `¡Fiebre del Oro! (${Math.ceil(goldRush.timeLeft)}s)` : goldRush.cooldown > 0 ? `Enfriamiento (${Math.ceil(goldRush.cooldown)}s)` : 'Fiebre del Oro'}
         </button>
@@ -112,6 +142,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     const [buyAmount, setBuyAmount] = useState(1);
     const [ranking, setRanking] = useState([]);
     const [rankingLoading, setRankingLoading] = useState(true);
+    const [isMining, setIsMining] = useState(false);
 
     const gameStateRef = useRef(gameState);
     useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -304,6 +335,9 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     }, [gameState.generators, gameState.generatorSpecializations, resourceFindingBonus]);
 
     const handleManualClick = (e) => {
+        setIsMining(true);
+        setTimeout(() => setIsMining(false), 150);
+
         let clickValue = goldPerClick;
         if (gameState.purchasedSkills.includes('critical_click')) {
             const skill = skillTypes['critical_click'];
@@ -651,6 +685,14 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         return branches;
     }, []);
 
+    const tabConfig = {
+        research: { name: 'Investigación', icon: 'research', color: 'cyan' },
+        ranking: { name: 'Ranking', icon: 'ranking', color: 'green' },
+        ascension: { name: 'Celestiales', icon: 'ascension', color: 'amber' },
+        achievements: { name: 'Logros', icon: 'achievements', color: 'yellow' },
+        crafting: { name: 'Fabricación', icon: 'crafting', color: 'orange' },
+    };
+
     return (
         <>
             <SpecializationModal choice={specializationChoice} onSelect={selectSpecialization} />
@@ -658,9 +700,9 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             {offlineEarnings && <OfflineModal earnings={offlineEarnings} onClose={() => setOfflineEarnings(null)} />}
             <Clickables clickables={gameState.activeClickables} onClick={handleClickable} />
 
-            <div className="bg-gradient-to-b from-gray-900 to-gray-800 text-white flex items-start justify-center min-h-screen py-4 sm:py-8 font-sans">
+            <div className="text-white flex items-start justify-center min-h-screen py-4 sm:py-8 font-sans">
                 <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 p-2 sm:p-4">
-                    <div className="lg:col-span-2 bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 space-y-6 border border-gray-700">
+                    <div className="lg:col-span-2 bg-gray-800/60 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 space-y-6 border border-gray-700">
                         <Header 
                             user={user}
                             gameState={gameState}
@@ -673,6 +715,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                             onActivateGoldRush={activateGoldRush}
                             goldPerClick={goldPerClick}
                             goldRush={gameState.goldRush}
+                            isMining={isMining}
                         />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
@@ -744,13 +787,18 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                         <div className="pt-4 border-t border-gray-700"><button onClick={hardReset} className="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">Reiniciar Partida (Hard Reset)</button></div>
                     </div>
                     <div className="lg:col-span-1 space-y-6 lg:h-fit lg:sticky top-4">
-                        <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 space-y-4 border border-gray-700">
+                        <div className="bg-gray-800/60 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 space-y-4 border border-gray-700">
                             <div className="flex border-b border-gray-700 overflow-x-auto tab-scroll">
-                                <button onClick={() => setActiveTab('research')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'research' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-400'}`}>Investigación</button>
-                                <button onClick={() => setActiveTab('ranking')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'ranking' ? 'text-green-400 border-b-2 border-green-400' : 'text-gray-400'}`}>Ranking</button>
-                                <button onClick={() => setActiveTab('ascension')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'ascension' ? 'text-amber-300 border-b-2 border-amber-300' : 'text-gray-400'}`}>Celestiales</button>
-                                <button onClick={() => setActiveTab('achievements')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'achievements' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}>Logros</button>
-                                <button onClick={() => setActiveTab('crafting')} className={`flex-shrink-0 py-2 px-4 font-semibold ${activeTab === 'crafting' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400'}`}>Fabricación</button>
+                                {Object.entries(tabConfig).map(([key, { name, icon, color }]) => (
+                                    <button 
+                                        key={key}
+                                        onClick={() => setActiveTab(key)} 
+                                        className={`flex-shrink-0 py-2 px-4 font-semibold flex items-center gap-2 transition-colors duration-200 ${activeTab === key ? `text-${color}-400 border-b-2 border-${color}-400` : 'text-gray-400 hover:text-white'}`}
+                                    >
+                                        <Icon name={icon} className="h-5 w-5" />
+                                        {name}
+                                    </button>
+                                ))}
                             </div>
 
                             {activeTab === 'ranking' && (
