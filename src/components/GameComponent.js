@@ -550,7 +550,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     };
     
     useEffect(() => {
-        let loadedState = { ...initialGameState };
+        const loadedState = { ...initialGameState };
         const { goldPerSecond: loadedGps } = recalculateValues(loadedState);
         
         const initialResourceFindingBonus = 1 + (Math.floor((loadedState.generators['excavator'] || 0) / 10) * 0.01) * (loadedState.craftedArtifacts.includes('lucky_geode') ? artifactTypes.find(a => a.id === 'lucky_geode').value : 1);
@@ -572,25 +572,28 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
 
         const timeNow = Date.now();
         const timeDifferenceSeconds = (timeNow - loadedState.lastSaveTimestamp) / 1000;
-        const earnedGold = timeDifferenceSeconds * loadedGps;
-        const earnedResources = { 
-            iron: timeDifferenceSeconds * initialRps.iron, 
-            coal: timeDifferenceSeconds * initialRps.coal, 
-            diamond: timeDifferenceSeconds * initialRps.diamond 
-        };
+        
+        if (timeDifferenceSeconds > 5) {
+            const earnedGold = timeDifferenceSeconds * loadedGps;
+            const earnedResources = { 
+                iron: timeDifferenceSeconds * initialRps.iron, 
+                coal: timeDifferenceSeconds * initialRps.coal, 
+                diamond: timeDifferenceSeconds * initialRps.diamond 
+            };
 
-        if (timeDifferenceSeconds > 5 && (earnedGold > 1 || Object.values(earnedResources).some(r => r > 1))) {
-            loadedState.gold += earnedGold;
-            loadedState.stats.totalGoldMined = (loadedState.stats.totalGoldMined || 0) + earnedGold;
-            for(const resId in earnedResources) {
-                loadedState.resources[resId] = (loadedState.resources[resId] || 0) + earnedResources[resId];
+            if (earnedGold > 1 || Object.values(earnedResources).some(r => r > 1)) {
+                loadedState.gold += earnedGold;
+                loadedState.stats.totalGoldMined = (loadedState.stats.totalGoldMined || 0) + earnedGold;
+                for(const resId in earnedResources) {
+                    loadedState.resources[resId] = (loadedState.resources[resId] || 0) + earnedResources[resId];
+                }
+                setOfflineEarnings({ time: timeDifferenceSeconds, gold: earnedGold, resources: earnedResources });
             }
-            setOfflineEarnings({ time: timeDifferenceSeconds, gold: earnedGold, resources: earnedResources });
         }
         
         setGameState(loadedState);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialGameState]);
+    }, []);
 
     useEffect(() => {
         const gameTick = setInterval(() => {
