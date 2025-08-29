@@ -59,13 +59,30 @@ export default function App() {
                     const gameDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/gameData`, 'progress');
                     const docSnap = await getDoc(gameDocRef);
                     let gameStateForUser;
+                    const newGameTemplate = getNewGameState();
 
                     if (docSnap.exists()) {
-                        gameStateForUser = docSnap.data();
+                        const savedData = docSnap.data();
+                        // Fusiona los datos guardados con la plantilla para asegurar que todos los campos nuevos estén presentes
+                        gameStateForUser = { 
+                            ...newGameTemplate, 
+                            ...savedData,
+                            stats: { // Fusiona explícitamente objetos anidados para evitar sobrescribirlos
+                                ...newGameTemplate.stats,
+                                ...(savedData.stats || {}),
+                            },
+                             resources: {
+                                ...newGameTemplate.resources,
+                                ...(savedData.resources || {}),
+                            },
+                            purchasedInfinityUpgrades: {
+                                ...newGameTemplate.purchasedInfinityUpgrades,
+                                ...(savedData.purchasedInfinityUpgrades || {}),
+                            }
+                        };
                     } else {
-                        const newGame = getNewGameState();
-                        await setDoc(gameDocRef, newGame);
-                        gameStateForUser = newGame;
+                        gameStateForUser = newGameTemplate;
+                        await setDoc(gameDocRef, gameStateForUser);
                     }
 
                     if (!gameStateForUser.stats.totalGoldMined) {
