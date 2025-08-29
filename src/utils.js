@@ -23,6 +23,11 @@ export const getNewGameState = () => ({
     activeClickables: [],
     lastSaveTimestamp: Date.now(),
     autoBuyUpgradesEnabled: false,
+    infinityPoints: 0,
+    purchasedInfinityUpgrades: {},
+    currentChallenge: null,
+    challengeStartTime: 0,
+    completedChallenges: [],
 });
 
 const numberFormatter = new Intl.NumberFormat('en-US', {
@@ -53,3 +58,4 @@ export function formatTime(seconds) {
     
     return parts.slice(0, 2).join(' ');
 }
+

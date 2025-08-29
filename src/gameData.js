@@ -2,6 +2,7 @@
 
 export const PRESTIGE_REQUIREMENT = 1000000;
 export const ASCENSION_REQUIREMENT = 1000;
+export const INFINITY_REQUIREMENT = 1e12; // 1 Trillón de oro total para el primer reseteo
 
 export const GOLD_RUSH = {
     DURATION: 15, // seconds
@@ -212,3 +213,53 @@ export const missionTypes = [
     { id: 'own_generators', name: 'Poseer Generadores', description: (val, gen) => `Posee ${val} ${gen}.`, type: 'generator', tiers: [10, 25, 50, 100, 200, 500] },
     { id: 'total_clicks', name: 'Clics Totales', description: (val) => `Haz clic un total de ${val} veces.`, type: 'clicks', tiers: [100, 500, 1000, 5000, 10000, 50000] },
 ];
+
+export const challengeTypes = {
+    'pacifist': {
+        name: 'Modo Pacifista',
+        description: 'No puedes hacer clic para obtener oro. Llega a 1e9 de oro para completar.',
+        goal: (state) => state.gold >= 1e9,
+        reward: 5, // Puntos de Infinito
+    },
+    'energy_crisis': {
+        name: 'Crisis Energética',
+        description: 'Los generadores de recursos (Geólogo, Mina de Diamantes) no producen nada. Fabrica 2 artefactos.',
+        goal: (state) => state.craftedArtifacts.length >= 2,
+        reward: 10,
+    },
+    'time_trial_1': {
+        name: 'Contrarreloj I',
+        description: 'Alcanza 1e12 de oro en menos de 1 hora.',
+        goal: (state) => state.gold >= 1e12,
+        timeLimit: 3600, // seconds
+        reward: 15,
+    }
+};
+
+export const infinityUpgradeTypes = {
+    'gem_boost': {
+        id: 'gem_boost',
+        name: 'Eficacia de Gemas Infinita',
+        description: '+1% a la eficacia de las gemas por cada nivel.',
+        cost: (level) => Math.pow(2, level),
+        effect: (level) => 1 + (level * 0.01),
+        maxLevel: 10
+    },
+    'production_boost': {
+        id: 'production_boost',
+        name: 'Producción Infinita',
+        description: '+0.5% a la producción de todos los generadores por nivel.',
+        cost: (level) => Math.pow(3, level),
+        effect: (level) => 1 + (level * 0.005),
+        maxLevel: 20
+    },
+    'science_start': {
+        id: 'science_start',
+        name: 'Conocimiento Infinito',
+        description: 'Empiezas cada reseteo de Infinito con 1 punto de ciencia por nivel.',
+        cost: (level) => 5 * (level + 1),
+        effect: (level) => level,
+        maxLevel: 5
+    }
+};
+

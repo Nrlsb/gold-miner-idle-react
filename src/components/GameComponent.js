@@ -6,12 +6,14 @@ import { doc, setDoc, collection, query, onSnapshot } from "firebase/firestore";
 import { 
     achievementTypes, generatorTypes, upgradeTypes, skillTypes, 
     ascensionUpgradeTypes, resourceTypes, artifactTypes, missionTypes,
-    PRESTIGE_REQUIREMENT, ASCENSION_REQUIREMENT, GOLD_RUSH 
+    challengeTypes, infinityUpgradeTypes,
+    PRESTIGE_REQUIREMENT, ASCENSION_REQUIREMENT, INFINITY_REQUIREMENT, GOLD_RUSH 
 } from '../gameData';
 import { getNewGameState, formatNumber, formatTime } from '../utils';
 import RankingComponent from './RankingComponent';
 import MissionsComponent from './MissionsComponent';
 import SkillTreeComponent from './SkillTreeComponent';
+import InfinityComponent from './InfinityComponent';
 
 // --- Icon Component ---
 const Icon = ({ name, className = "h-5 w-5" }) => {
@@ -27,6 +29,7 @@ const Icon = ({ name, className = "h-5 w-5" }) => {
         achievements: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />,
         crafting: <path strokeLinecap="round" strokeLinejoin="round" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />,
         missions: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
+        infinity: <path strokeLinecap="round" strokeLinejoin="round" d="M13.13 13.13C11.32 14.94 8.68 14.94 6.87 13.13C5.06 11.32 5.06 8.68 6.87 6.87C8.68 5.06 11.32 5.06 13.13 6.87M17.13 17.13C18.94 15.32 18.94 12.68 17.13 10.87C15.32 9.06 12.68 9.06 10.87 10.87" />
     };
 
     const isFilled = name === 'pickaxe';
@@ -175,10 +178,19 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
 
     // --- Lógica de cálculo centralizada ---
     const recalculateValues = useCallback((currentState) => {
+        // --- Infinity Bonuses ---
+        const infinityUpgrades = currentState.purchasedInfinityUpgrades || {};
+        const gemBoostLevel = infinityUpgrades.gem_boost || 0;
+        const gemBoostEffect = infinityUpgradeTypes.gem_boost.effect(gemBoostLevel);
+        const productionBoostLevel = infinityUpgrades.production_boost || 0;
+        const productionBoostEffect = infinityUpgradeTypes.production_boost.effect(productionBoostLevel);
+
         let gemEffectiveness = 1.0;
         if (currentState.purchasedAscensionUpgrades.includes('gem_mastery')) {
             gemEffectiveness = ascensionUpgradeTypes['gem_mastery'].value;
         }
+        gemEffectiveness *= gemBoostEffect;
+
         let totalGoldMultiplierFromAscension = 1.0;
         if (currentState.purchasedAscensionUpgrades.includes('relic_power')) {
             totalGoldMultiplierFromAscension *= (1 + currentState.celestialRelics);
@@ -259,7 +271,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             }
         }
         
-        let goldPerSecond = (baseGps * totalGpsMultiplier * currentPrestigeBonus) * totalGoldMultiplierFromAscension;
+        let goldPerSecond = (baseGps * totalGpsMultiplier * currentPrestigeBonus) * totalGoldMultiplierFromAscension * productionBoostEffect;
         
         if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes['compound_interest'].value;
         
@@ -283,12 +295,19 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     const { goldPerClick, goldPerSecond } = useMemo(() => recalculateValues(gameState), [gameState, recalculateValues]);
     
     const prestigeBonus = useMemo(() => {
+        const infinityUpgrades = gameState.purchasedInfinityUpgrades || {};
+        const gemBoostLevel = infinityUpgrades.gem_boost || 0;
+        const gemBoostEffect = infinityUpgradeTypes.gem_boost.effect(gemBoostLevel);
+        
         let gemEffectiveness = 1.0;
         if (gameState.purchasedAscensionUpgrades.includes('gem_mastery')) {
             gemEffectiveness = ascensionUpgradeTypes['gem_mastery'].value;
         }
+        
+        gemEffectiveness *= gemBoostEffect;
+
         return 1 + (gameState.prestigeGems * 0.05 * gemEffectiveness);
-    }, [gameState.prestigeGems, gameState.purchasedAscensionUpgrades]);
+    }, [gameState.prestigeGems, gameState.purchasedAscensionUpgrades, gameState.purchasedInfinityUpgrades]);
     
     const gemsToGain = useMemo(() => {
         if (gameState.gold < PRESTIGE_REQUIREMENT) return 0;
@@ -323,6 +342,9 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     }, [gameState.generators, gameState.craftedArtifacts]);
 
     const resourcesPerSecond = useMemo(() => {
+        if (gameState.currentChallenge === 'energy_crisis') {
+            return { iron: 0, coal: 0, diamond: 0 };
+        }
         const rps = { iron: 0, coal: 0, diamond: 0 };
         for (const type of generatorTypes) {
             if (type.baseRps) {
@@ -339,9 +361,12 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             rps.iron += minerCount * 0.1;
         }
         return rps;
-    }, [gameState.generators, gameState.generatorSpecializations, resourceFindingBonus]);
+    }, [gameState.generators, gameState.generatorSpecializations, resourceFindingBonus, gameState.currentChallenge]);
 
     const handleManualClick = (e) => {
+        if (gameState.currentChallenge === 'pacifist') {
+            return; // Bloquea el clic si el desafío está activo
+        }
         setIsMining(true);
         setTimeout(() => setIsMining(false), 150);
 
@@ -527,6 +552,90 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         }
     };
 
+    const infinityReset = () => {
+        const pointsToGain = Math.floor(Math.log10(gameState.stats.totalGoldMined || 1) / 3 - 4);
+        if (pointsToGain <= 0 || gameState.stats.totalGoldMined < INFINITY_REQUIREMENT) return;
+
+        if (window.confirm(`¿Estás seguro? Esto reiniciará TODO tu progreso (oro, gemas, ciencia, reliquias, etc.) a cambio de ${formatNumber(pointsToGain)} Puntos de Infinito.`)) {
+            setGameState(prev => {
+                const scienceStartLevel = prev.purchasedInfinityUpgrades.science_start || 0;
+                const startingScience = infinityUpgradeTypes.science_start.effect(scienceStartLevel);
+                const newGame = getNewGameState();
+                return {
+                    ...newGame,
+                    infinityPoints: prev.infinityPoints + pointsToGain,
+                    purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades,
+                    completedChallenges: prev.completedChallenges,
+                    sciencePoints: startingScience,
+                    stats: {
+                        ...newGame.stats,
+                        totalGoldMined: prev.stats.totalGoldMined // Preserve for future calculations
+                    }
+                };
+            });
+        }
+    };
+
+    const startChallenge = (challengeId) => {
+        if (gameState.currentChallenge || gameState.completedChallenges.includes(challengeId)) return;
+        if (window.confirm(`¿Iniciar desafío "${challengeTypes[challengeId].name}"? Tu progreso se reiniciará con reglas especiales.`)) {
+            setGameState(prev => {
+                const newGame = getNewGameState();
+                return {
+                    ...newGame,
+                    currentChallenge: challengeId,
+                    challengeStartTime: Date.now(),
+                    // Mantener el progreso de infinito
+                    infinityPoints: prev.infinityPoints,
+                    purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades,
+                    completedChallenges: prev.completedChallenges,
+                    stats: {
+                        ...newGame.stats,
+                        totalGoldMined: prev.stats.totalGoldMined
+                    }
+                };
+            });
+        }
+    };
+
+    const abandonChallenge = () => {
+        if (!gameState.currentChallenge) return;
+        if (window.confirm("¿Seguro que quieres abandonar el desafío? Tu progreso en este desafío se perderá.")) {
+            setGameState(prev => {
+                const newGame = getNewGameState();
+                return {
+                    ...newGame,
+                    // Mantener el progreso de infinito
+                    infinityPoints: prev.infinityPoints,
+                    purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades,
+                    completedChallenges: prev.completedChallenges,
+                    stats: {
+                        ...newGame.stats,
+                        totalGoldMined: prev.stats.totalGoldMined
+                    }
+                };
+            });
+        }
+    };
+
+    const buyInfinityUpgrade = (upgradeId) => {
+        const upgrade = infinityUpgradeTypes[upgradeId];
+        const level = gameState.purchasedInfinityUpgrades[upgradeId] || 0;
+        if (level >= upgrade.maxLevel) return;
+
+        const cost = upgrade.cost(level);
+        if (gameState.infinityPoints >= cost) {
+            setGameState(prev => ({
+                ...prev,
+                infinityPoints: prev.infinityPoints - cost,
+                purchasedInfinityUpgrades: {
+                    ...prev.purchasedInfinityUpgrades,
+                    [upgradeId]: level + 1
+                }
+            }));
+        }
+    };
+
     const activateGoldRush = () => {
         if (gameState.goldRush.cooldown > 0) return;
         setGameState(prev => ({ ...prev, goldRush: { active: true, timeLeft: GOLD_RUSH.DURATION, cooldown: GOLD_RUSH.COOLDOWN } }));
@@ -599,6 +708,47 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         const gameTick = setInterval(() => {
             setGameState(prev => {
                  let newState = { ...prev };
+
+                 // --- Lógica del desafío ---
+                 if (newState.currentChallenge) {
+                    const challenge = challengeTypes[newState.currentChallenge];
+                    let challengeCompleted = false;
+
+                    if (challenge.timeLimit) {
+                        const timeElapsed = (Date.now() - newState.challengeStartTime) / 1000;
+                        if (timeElapsed > challenge.timeLimit) {
+                            alert(`Desafío "${challenge.name}" fallido: se acabó el tiempo.`);
+                             const freshGame = getNewGameState();
+                             return {
+                                 ...freshGame,
+                                 infinityPoints: newState.infinityPoints,
+                                 completedChallenges: newState.completedChallenges,
+                                 purchasedInfinityUpgrades: newState.purchasedInfinityUpgrades,
+                                 stats: { ...freshGame.stats, totalGoldMined: newState.stats.totalGoldMined }
+                             };
+                        }
+                    }
+
+                    if (challenge.goal(newState)) {
+                        challengeCompleted = true;
+                    }
+
+                    if (challengeCompleted) {
+                        alert(`¡Desafío "${challenge.name}" completado! Recompensa: ${challenge.reward} Puntos de Infinito.`);
+                        const newCompleted = [...newState.completedChallenges, newState.currentChallenge];
+                        const newPoints = newState.infinityPoints + challenge.reward;
+                        const freshGame = getNewGameState();
+                        return {
+                            ...freshGame,
+                             infinityPoints: newPoints,
+                             completedChallenges: newCompleted,
+                             purchasedInfinityUpgrades: newState.purchasedInfinityUpgrades,
+                             stats: { ...freshGame.stats, totalGoldMined: newState.stats.totalGoldMined }
+                        };
+                    }
+                }
+
+
                  newState.resources = { ...prev.resources };
                  newState.purchasedUpgrades = [...prev.purchasedUpgrades];
 
@@ -696,6 +846,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         research: { name: 'Investigación', icon: 'research', color: 'cyan' },
         ranking: { name: 'Ranking', icon: 'ranking', color: 'green' },
         ascension: { name: 'Celestiales', icon: 'ascension', color: 'amber' },
+        infinity: { name: 'Infinito', icon: 'infinity', color: 'pink' },
         achievements: { name: 'Logros', icon: 'achievements', color: 'yellow' },
         missions: { name: 'Misiones', icon: 'missions', color: 'indigo' },
         crafting: { name: 'Fabricación', icon: 'crafting', color: 'orange' },
@@ -825,6 +976,16 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                                 />
                             )}
 
+                            {activeTab === 'infinity' && (
+                                <InfinityComponent 
+                                    gameState={gameState}
+                                    onStartChallenge={startChallenge}
+                                    onAbandonChallenge={abandonChallenge}
+                                    onBuyInfinityUpgrade={buyInfinityUpgrade}
+                                    onInfinityReset={infinityReset}
+                                />
+                            )}
+
                             {activeTab === 'ascension' && (
                                 <div className="space-y-3">
                                     {Object.entries(ascensionUpgradeTypes).map(([id, upgrade]) => {
@@ -870,3 +1031,4 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
 };
 
 export default GameComponent;
+
