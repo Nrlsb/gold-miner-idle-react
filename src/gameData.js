@@ -1,3 +1,5 @@
+import { formatNumber } from './utils'; // <-- ESTA LÍNEA ES LA CORRECCIÓN
+
 // src/gameData.js
 
 export const PRESTIGE_REQUIREMENT = 1000000;
@@ -10,20 +12,12 @@ export const GOLD_RUSH = {
     MULTIPLIER: 10,
 };
 
-// --- NUEVA SECCIÓN: Eventos Aleatorios ---
 export const RANDOM_EVENTS = {
     GEOLOGIST_REPORT: {
-        COOLDOWN: 180, // 3 minutos de enfriamiento
-        CHANCE: 0.33, // 33% de probabilidad cada 10 segundos después del enfriamiento
-        OFFERS: [
-            { description: "Un pequeño filón de hierro.", cost: 0, reward: { iron: 100 } },
-            { description: "Una veta de carbón prometedora.", cost: 0, reward: { coal: 50 } },
-            { description: "Un trato para conseguir diamantes a buen precio.", cost: 1e6, reward: { diamond: 25 } },
-            { description: "Un mapa del tesoro que revela una gran cantidad de oro.", cost: 1e7, reward: { gold: 5e7 } },
-        ]
+        CHANCE: 0.15, // Probabilidad por minuto
+        COOLDOWN: 300, // 5 minutos de enfriamiento
     }
 };
-
 
 export const achievementTypes = {
     'click_1': { name: 'Principiante del Clic', description: 'Haz clic 100 veces.', rewardDescription: '+1% Oro por Clic', condition: (state) => state.stats.totalClicks >= 100, reward: { type: 'gpc_multiplier', value: 1.01 } },
@@ -34,12 +28,12 @@ export const achievementTypes = {
 };
 
 export const generatorTypes = [
-    {
-        id: 'miner',
-        name: 'Minero Automático',
-        description: 'Genera una pequeña cantidad de oro.',
-        baseCost: 10,
-        baseGps: 0.1,
+    { 
+        id: 'miner', 
+        name: 'Minero Automático', 
+        description: 'Genera una pequeña cantidad de oro.', 
+        baseCost: 10, 
+        baseGps: 0.1, 
         costMultiplier: 1.15,
         specializations: {
             milestone: 25,
@@ -71,36 +65,36 @@ export const upgradeTypes = [
 
 export const skillTypes = {
     // Clicking Branch
-    'powerful_clicks_1': {
-        name: 'Clics Potenciados I',
-        description: 'Aumenta el oro por clic en un 25%.',
-        cost: 1,
-        type: 'click_bonus',
-        value: 1.25,
-        branch: 'clicking',
+    'powerful_clicks_1': { 
+        name: 'Clics Potenciados I', 
+        description: 'Aumenta el oro por clic en un 25%.', 
+        cost: 1, 
+        type: 'click_bonus', 
+        value: 1.25, 
+        branch: 'clicking', 
         requires: [],
-        position: { x: 0, y: 0 }
+        position: { x: 0, y: 0 } 
     },
-    'critical_click': {
-        name: 'Golpe Crítico',
-        description: 'Tus clics tienen un 2% de probabilidad de generar 10 veces más oro.',
-        cost: 3,
-        type: 'critical_click_chance',
-        value: 0.02,
-        multiplier: 10,
-        branch: 'clicking',
+    'critical_click': { 
+        name: 'Golpe Crítico', 
+        description: 'Tus clics tienen un 2% de probabilidad de generar 10 veces más oro.', 
+        cost: 3, 
+        type: 'critical_click_chance', 
+        value: 0.02, 
+        multiplier: 10, 
+        branch: 'clicking', 
         requires: ['powerful_clicks_1'],
-        position: { x: 0, y: 1 }
+        position: { x: 0, y: 1 } 
     },
-    'powerful_clicks_2': {
-        name: 'Clics Potenciados II',
-        description: 'Aumenta el oro por clic en otro 50%.',
-        cost: 8,
-        type: 'click_bonus',
-        value: 1.5,
-        branch: 'clicking',
+    'powerful_clicks_2': { 
+        name: 'Clics Potenciados II', 
+        description: 'Aumenta el oro por clic en otro 50%.', 
+        cost: 8, 
+        type: 'click_bonus', 
+        value: 1.5, 
+        branch: 'clicking', 
         requires: ['critical_click'],
-        position: { x: 0, y: 2 }
+        position: { x: 0, y: 2 } 
     },
     'click_frenzy': {
         name: 'Frenesí de Clics',
@@ -114,27 +108,27 @@ export const skillTypes = {
     },
 
     // Automation Branch
-    'efficient_miners_1': {
-        name: 'Minería Eficiente I',
-        description: 'Los Mineros Automáticos producen un 25% más.',
-        cost: 1,
-        type: 'generator_bonus',
-        target: 'miner',
-        value: 1.25,
-        branch: 'automation',
+    'efficient_miners_1': { 
+        name: 'Minería Eficiente I', 
+        description: 'Los Mineros Automáticos producen un 25% más.', 
+        cost: 1, 
+        type: 'generator_bonus', 
+        target: 'miner', 
+        value: 1.25, 
+        branch: 'automation', 
         requires: [],
-        position: { x: 1, y: 0 }
+        position: { x: 1, y: 0 } 
     },
-    'cart_optimization': {
-        name: 'Optimización de Carretas',
-        description: 'Las Carretas de Mina producen un 25% más.',
-        cost: 4,
-        type: 'generator_bonus',
-        target: 'cart',
-        value: 1.25,
-        branch: 'automation',
+    'cart_optimization': { 
+        name: 'Optimización de Carretas', 
+        description: 'Las Carretas de Mina producen un 25% más.', 
+        cost: 4, 
+        type: 'generator_bonus', 
+        target: 'cart', 
+        value: 1.25, 
+        branch: 'automation', 
         requires: ['efficient_miners_1'],
-        position: { x: 1, y: 1 }
+        position: { x: 1, y: 1 } 
     },
      'excavator_synergy': {
         name: 'Sinergia de Excavadoras',
@@ -147,58 +141,58 @@ export const skillTypes = {
         requires: ['cart_optimization'],
         position: { x: 1, y: 2 }
     },
-    'compound_interest': {
-        name: 'Interés Compuesto',
-        description: 'Gana un 0.01% de tu oro actual por segundo.',
-        cost: 10,
-        type: 'interest_bonus',
-        value: 0.0001,
-        branch: 'automation',
+    'compound_interest': { 
+        name: 'Interés Compuesto', 
+        description: 'Gana un 0.01% de tu oro actual por segundo.', 
+        cost: 10, 
+        type: 'interest_bonus', 
+        value: 0.0001, 
+        branch: 'automation', 
         requires: ['excavator_synergy'],
-        position: { x: 1, y: 3 }
+        position: { x: 1, y: 3 } 
     },
 
     // Prestige Branch
-    'gem_hoarder_1': {
-        name: 'Acumulador de Gemas I',
-        description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.',
-        cost: 2,
-        type: 'prestige_bonus',
-        value: 1,
-        branch: 'prestige',
+    'gem_hoarder_1': { 
+        name: 'Acumulador de Gemas I', 
+        description: 'Gana 1 gema de prestigio extra cada vez que haces prestigio.', 
+        cost: 2, 
+        type: 'prestige_bonus', 
+        value: 1, 
+        branch: 'prestige', 
         requires: [],
-        position: { x: 2, y: 0 }
+        position: { x: 2, y: 0 } 
     },
-    'science_surplus': {
-        name: 'Excedente Científico',
-        description: 'Gana un 10% más de Puntos de Ciencia al hacer prestigio.',
-        cost: 5,
-        type: 'science_bonus',
-        value: 1.1,
-        branch: 'prestige',
+    'science_surplus': { 
+        name: 'Excedente Científico', 
+        description: 'Gana un 10% más de Puntos de Ciencia al hacer prestigio.', 
+        cost: 5, 
+        type: 'science_bonus', 
+        value: 1.1, 
+        branch: 'prestige', 
         requires: ['gem_hoarder_1'],
-        position: { x: 2, y: 1 }
+        position: { x: 2, y: 1 } 
     },
-    'geology_grants': {
-        name: 'Subsidios Geológicos',
-        description: 'Los Geólogos cuestan un 10% menos.',
-        cost: 8,
-        type: 'cost_reduction',
-        target: 'geologist',
-        value: 0.9,
-        branch: 'prestige',
+    'geology_grants': { 
+        name: 'Subsidios Geológicos', 
+        description: 'Los Geólogos cuestan un 10% menos.', 
+        cost: 8, 
+        type: 'cost_reduction', 
+        target: 'geologist', 
+        value: 0.9, 
+        branch: 'prestige', 
         requires: ['science_surplus'],
-        position: { x: 2, y: 2 }
+        position: { x: 2, y: 2 } 
     },
-    'upgrade_automation': {
-        name: 'Ingeniero de Mejoras',
-        description: 'Desbloquea la compra automática de mejoras de oro.',
-        cost: 15,
-        type: 'unlock_feature',
-        value: 'auto_buyer',
-        branch: 'prestige',
+    'upgrade_automation': { 
+        name: 'Ingeniero de Mejoras', 
+        description: 'Desbloquea la compra automática de mejoras de oro.', 
+        cost: 15, 
+        type: 'unlock_feature', 
+        value: 'auto_buyer', 
+        branch: 'prestige', 
         requires: ['geology_grants'],
-        position: { x: 2, y: 3 }
+        position: { x: 2, y: 3 } 
     },
 };
 
@@ -223,34 +217,32 @@ export const artifactTypes = [
     { id: 'golden_prospecting_pan', name: 'Batea Dorada', description: 'Aumenta la producción de las Plantas de Lavado de Oro en un 100%.', cost: { iron: 15000, coal: 5000, diamond: 2500 }, type: 'generator_multiplier', target: 'gold_panning_plant', value: 2.0 }
 ];
 
-// --- Misiones actualizadas con recompensas específicas ---
 export const missionTypes = {
-    gold: {
-        id: 'gold',
+    reach_gold: {
         name: 'Alcanzar Oro',
         description: (val) => `Alcanza ${formatNumber(val)} de oro.`,
-        tiers: [1e3, 1e4, 1e5, 1e6, 1e7, 1e9, 1e12],
-        reward: (tierIndex) => ({ type: 'gems', value: tierIndex + 1 }),
-        rewardDescription: (tierIndex) => `+${tierIndex + 1} Gemas de Prestigio`
+        tiers: [1000, 10000, 100000, 1e6, 1e7, 1e9, 1e12],
+        condition: (state, target) => state.gold >= target,
+        reward: (tier) => ({ type: 'gems', value: Math.ceil(Math.pow(tier + 1, 2) / 2) }),
+        rewardDescription: (tier) => `+${formatNumber(Math.ceil(Math.pow(tier + 1, 2) / 2))} Gemas`
     },
-    generators: {
-        id: 'generators',
+    own_generators: {
         name: 'Poseer Generadores',
         description: (val, genName) => `Posee ${val} ${genName}s.`,
         tiers: [10, 25, 50, 100, 200, 500],
-        reward: (tierIndex) => ({ type: 'science', value: (tierIndex + 1) * 2 }),
-        rewardDescription: (tierIndex) => `+${(tierIndex + 1) * 2} Puntos de Ciencia`
+        condition: (state, target, genId) => (state.generators[genId] || 0) >= target,
+        reward: (tier) => ({ type: 'science', value: Math.ceil((tier + 1) * 1.5) }),
+        rewardDescription: (tier) => `+${formatNumber(Math.ceil((tier + 1) * 1.5))} Ciencia`
     },
-    clicks: {
-        id: 'clicks',
+    total_clicks: {
         name: 'Clics Totales',
         description: (val) => `Haz clic un total de ${val} veces.`,
-        tiers: [100, 500, 1e3, 5e3, 1e4, 5e4],
-        reward: (tierIndex) => ({ type: 'gold_multiplier', value: 1.05, duration: 300 }),
-        rewardDescription: () => `+5% de producción de oro durante 5 minutos.`
-    }
+        tiers: [100, 500, 1000, 5000, 10000, 50000],
+        condition: (state, target) => state.stats.totalClicks >= target,
+        reward: (tier) => ({ type: 'gold_multiplier', value: 1.5, duration: 60 }),
+        rewardDescription: () => `+50% Oro por 60s`
+    },
 };
-
 
 export const challengeTypes = {
     'pacifist': {
