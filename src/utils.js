@@ -1,7 +1,53 @@
 // src/utils.js
+
 import { missionTypes, generatorTypes } from './gameData';
 
-// --- Función de estado de juego actualizada ---
+// Esta función ahora crea las misiones iniciales
+export const initializeMissions = () => {
+    const missions = [];
+    
+    // Misión inicial de Oro
+    const goldMissionType = missionTypes.reach_gold;
+    missions.push({
+        id: `reach_gold_0`,
+        type: 'reach_gold',
+        tier: 0,
+        progress: 0,
+        target: goldMissionType.tiers[0],
+        description: goldMissionType.description(goldMissionType.tiers[0]),
+        rewardDescription: goldMissionType.rewardDescription(0),
+    });
+
+    // Misión inicial de Clics
+    const clicksMissionType = missionTypes.total_clicks;
+    missions.push({
+        id: `total_clicks_0`,
+        type: 'total_clicks',
+        tier: 0,
+        progress: 0,
+        target: clicksMissionType.tiers[0],
+        description: clicksMissionType.description(clicksMissionType.tiers[0]),
+        rewardDescription: clicksMissionType.rewardDescription(0),
+    });
+    
+    // Misión inicial para el primer generador (Minero)
+    const genMissionType = missionTypes.own_generators;
+    const firstGenerator = generatorTypes[0];
+    missions.push({
+        id: `own_generators_${firstGenerator.id}_0`,
+        type: 'own_generators',
+        targetGenerator: firstGenerator.id,
+        tier: 0,
+        progress: 0,
+        target: genMissionType.tiers[0],
+        description: genMissionType.description(genMissionType.tiers[0], firstGenerator.name),
+        rewardDescription: genMissionType.rewardDescription(0),
+    });
+
+    return missions;
+};
+
+
 export const getNewGameState = () => ({
     gold: 0,
     generators: {},
@@ -30,62 +76,10 @@ export const getNewGameState = () => ({
     currentChallenge: null,
     challengeStartTime: 0,
     completedChallenges: [],
-    activeMissions: [], // Nuevo para misiones activas
-    temporaryBoosts: {}, // Nuevo para mejoras temporales
-    eventCooldowns: {}, // Nuevo para eventos aleatorios
+    // Inicializa con misiones activas
+    activeMissions: initializeMissions(),
+    temporaryBoosts: {},
 });
-
-// --- Nueva función para inicializar misiones ---
-export function initializeMissions() {
-    const missions = [];
-    
-    // Misión de Oro
-    const goldMission = missionTypes.gold;
-    missions.push({
-        id: 'gold_0',
-        type: 'gold',
-        tier: 0,
-        name: goldMission.name,
-        target: goldMission.tiers[0],
-        progress: 0,
-        description: goldMission.description(goldMission.tiers[0]),
-        rewardDescription: goldMission.rewardDescription(0),
-    });
-
-    // Misiones de Generadores
-    generatorTypes.forEach(gen => {
-        if (gen.baseGps > 0) { // Solo para generadores de oro
-            const genMission = missionTypes.generators;
-            missions.push({
-                id: `generators_${gen.id}_0`,
-                type: 'generators',
-                targetGenerator: gen.id,
-                tier: 0,
-                name: `${genMission.name} (${gen.name})`,
-                target: genMission.tiers[0],
-                progress: 0,
-                description: genMission.description(genMission.tiers[0], gen.name),
-                rewardDescription: genMission.rewardDescription(0)
-            });
-        }
-    });
-
-    // Misión de Clics
-    const clickMission = missionTypes.clicks;
-    missions.push({
-        id: 'clicks_0',
-        type: 'clicks',
-        tier: 0,
-        name: clickMission.name,
-        target: clickMission.tiers[0],
-        progress: 0,
-        description: clickMission.description(clickMission.tiers[0]),
-        rewardDescription: clickMission.rewardDescription(0),
-    });
-
-    return missions;
-}
-
 
 const numberFormatter = new Intl.NumberFormat('en-US', {
     notation: 'compact',
