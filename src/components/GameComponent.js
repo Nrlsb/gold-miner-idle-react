@@ -7,13 +7,19 @@ import {
     achievementTypes, generatorTypes, upgradeTypes, skillTypes, 
     ascensionUpgradeTypes, resourceTypes, artifactTypes, missionTypes,
     challengeTypes, infinityUpgradeTypes,
-    PRESTIGE_REQUIREMENT, ASCENSION_REQUIREMENT, INFINITY_REQUIREMENT, GOLD_RUSH 
+    PRESTIGE_REQUIREMENT, ASCENSION_REQUIREMENT, INFINITY_REQUIREMENT, GOLD_RUSH, RANDOM_EVENTS 
 } from '../gameData';
-import { getNewGameState, formatNumber, formatTime } from '../utils';
+import { getNewGameState, formatNumber, formatTime, initializeMissions } from '../utils';
+
+// --- Componentes importados ---
 import RankingComponent from './RankingComponent';
 import MissionsComponent from './MissionsComponent';
 import SkillTreeComponent from './SkillTreeComponent';
 import InfinityComponent from './InfinityComponent';
+import SettingsComponent from './SettingsComponent';
+import ConfirmationModal from './ConfirmationModal';
+import NotificationComponent from './NotificationComponent';
+
 
 // --- Icon Component ---
 const Icon = ({ name, className = "h-5 w-5" }) => {
@@ -29,7 +35,8 @@ const Icon = ({ name, className = "h-5 w-5" }) => {
         achievements: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />,
         crafting: <path strokeLinecap="round" strokeLinejoin="round" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />,
         missions: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
-        infinity: <path strokeLinecap="round" strokeLinejoin="round" d="M13.13 13.13C11.32 14.94 8.68 14.94 6.87 13.13C5.06 11.32 5.06 8.68 6.87 6.87C8.68 5.06 11.32 5.06 13.13 6.87M17.13 17.13C18.94 15.32 18.94 12.68 17.13 10.87C15.32 9.06 12.68 9.06 10.87 10.87" />
+        infinity: <path strokeLinecap="round" strokeLinejoin="round" d="M13.13 13.13C11.32 14.94 8.68 14.94 6.87 13.13C5.06 11.32 5.06 8.68 6.87 6.87C8.68 5.06 11.32 5.06 13.13 6.87M17.13 17.13C18.94 15.32 18.94 12.68 17.13 10.87C15.32 9.06 12.68 9.06 10.87 10.87" />,
+        settings: <><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></>
     };
 
     const isFilled = name === 'pickaxe';
@@ -41,7 +48,7 @@ const Icon = ({ name, className = "h-5 w-5" }) => {
     );
 };
 
-// --- Small Presentational Components ---
+// --- Componentes pequeños de UI ---
 const FloatingNumbers = ({ numbers }) => (
     <>
         {numbers.map(num => (
@@ -103,6 +110,7 @@ const Clickables = ({ clickables, onClick }) => (
     </div>
 );
 
+// --- Componentes de la Interfaz Principal ---
 const Header = ({ user, gameState, goldPerSecond, prestigeBonus, onSignOut }) => (
      <div className="bg-gray-900/50 backdrop-blur-sm p-4 sm:p-6 rounded-xl border border-gray-700 lg:sticky top-4 z-10 shadow-lg">
         <div className="text-center mb-4">
@@ -125,8 +133,8 @@ const Header = ({ user, gameState, goldPerSecond, prestigeBonus, onSignOut }) =>
 
 const MainActions = ({ onManualClick, onActivateGoldRush, goldPerClick, goldRush, isMining }) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button 
-            onClick={onManualClick} 
+        <button
+            onClick={onManualClick}
             className={`w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 sm:py-4 px-6 rounded-lg text-lg sm:text-xl transition-transform duration-75 active:scale-95 active:brightness-90 shadow-lg shadow-yellow-500/20 flex items-center justify-center gap-2 ${isMining ? 'mine-button-animation' : ''}`}
         >
             <Icon name="pickaxe" className="h-7 w-7"/>
@@ -138,7 +146,6 @@ const MainActions = ({ onManualClick, onActivateGoldRush, goldPerClick, goldRush
     </div>
 );
 
-
 const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     const [gameState, setGameState] = useState(initialGameState);
     const [floatingNumbers, setFloatingNumbers] = useState([]);
@@ -149,22 +156,43 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     const [ranking, setRanking] = useState([]);
     const [rankingLoading, setRankingLoading] = useState(true);
     const [isMining, setIsMining] = useState(false);
+    
+    // --- Nuevos estados para modales y notificaciones ---
+    const [toasts, setToasts] = useState([]);
+    const [confirmation, setConfirmation] = useState({ isOpen: false, message: '', onConfirm: () => {} });
 
     const gameStateRef = useRef(gameState);
     useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
-    // --- Obtención de datos del Ranking ---
+    // --- Sistema de notificaciones ---
+    const addToast = useCallback((message, type = 'info') => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+    }, []);
+
+    // --- Sistema de confirmación ---
+    const showConfirmation = useCallback((message, onConfirm) => {
+        setConfirmation({
+            isOpen: true,
+            message,
+            onConfirm: () => {
+                onConfirm();
+                setConfirmation({ isOpen: false, message: '', onConfirm: () => {} });
+            },
+        });
+    }, []);
+    
+    const closeConfirmation = () => setConfirmation({ isOpen: false, message: '', onConfirm: () => {} });
+
+    // --- Lógica de Ranking ---
     useEffect(() => {
         if (!db || !appId) return;
         const rankingColRef = collection(db, `artifacts/${appId}/public/data/rankings`);
         const q = query(rankingColRef);
-
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const players = [];
-            querySnapshot.forEach((doc) => {
-                players.push({ id: doc.id, ...doc.data() });
-            });
-            
+            querySnapshot.forEach((doc) => players.push({ id: doc.id, ...doc.data() }));
             players.sort((a, b) => (b.totalGoldMined || 0) - (a.totalGoldMined || 0));
             setRanking(players.slice(0, 100));
             setRankingLoading(false);
@@ -172,7 +200,6 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             console.error("Error al obtener el ranking:", error);
             setRankingLoading(false);
         });
-
         return () => unsubscribe();
     }, [db, appId]);
 
@@ -185,6 +212,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         const productionBoostLevel = infinityUpgrades.production_boost || 0;
         const productionBoostEffect = infinityUpgradeTypes.production_boost.effect(productionBoostLevel);
 
+        // --- Ascension Bonuses ---
         let gemEffectiveness = 1.0;
         if (currentState.purchasedAscensionUpgrades.includes('gem_mastery')) {
             gemEffectiveness = ascensionUpgradeTypes['gem_mastery'].value;
@@ -196,8 +224,17 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             totalGoldMultiplierFromAscension *= (1 + currentState.celestialRelics);
         }
 
+        // --- Temporary Boosts ---
+        let temporaryGoldMultiplier = 1.0;
+        Object.values(currentState.temporaryBoosts || {}).forEach(boost => {
+            if(boost.type === 'gold_multiplier') {
+                temporaryGoldMultiplier *= boost.value;
+            }
+        });
+
         const currentPrestigeBonus = 1 + (currentState.prestigeGems * 0.05 * gemEffectiveness);
 
+        // --- Gold Per Click ---
         let baseGpc = 1;
         currentState.purchasedUpgrades.forEach(upgradeId => {
             const upgrade = upgradeTypes.find(u => u.id === upgradeId);
@@ -216,8 +253,9 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             if (ach.reward.type === 'gpc_multiplier') gpcMultiplier *= ach.reward.value;
         });
         
-        let goldPerClick = baseGpc * gpcMultiplier * currentPrestigeBonus * totalGoldMultiplierFromAscension;
+        let goldPerClick = baseGpc * gpcMultiplier * currentPrestigeBonus * totalGoldMultiplierFromAscension * temporaryGoldMultiplier;
 
+        // --- Gold Per Second ---
         let baseGps = 0;
         let totalGpsMultiplier = 1.0;
 
@@ -230,57 +268,28 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             if (type.baseGps) {
                 let generatorProduction = (currentState.generators[type.id] || 0) * type.baseGps;
                 let generatorMultiplier = 1.0;
-
-                currentState.purchasedUpgrades.forEach(upgradeId => {
-                    const upgrade = upgradeTypes.find(u => u.id === upgradeId);
-                    if (upgrade && upgrade.type === 'generator_multiplier' && upgrade.target === type.id) generatorMultiplier *= upgrade.value;
-                });
+                currentState.purchasedUpgrades.forEach(uid => { if (upgradeTypes.find(u=>u.id===uid)?.target === type.id) generatorMultiplier *= upgradeTypes.find(u=>u.id===uid).value; });
+                currentState.purchasedSkills.forEach(sid => { if (skillTypes[sid]?.target === type.id) generatorMultiplier *= skillTypes[sid].value; });
+                currentState.craftedArtifacts.forEach(aid => { if (artifactTypes.find(a=>a.id===aid)?.target === type.id) generatorMultiplier *= artifactTypes.find(a=>a.id===aid).value; });
+                currentState.unlockedAchievements.forEach(aid => { if (achievementTypes[aid]?.reward.target === type.id) generatorMultiplier *= achievementTypes[aid].reward.value; });
                 
-                currentState.purchasedSkills.forEach(skillId => {
-                    const skill = skillTypes[skillId];
-                    if(skill && skill.type === 'generator_bonus' && skill.target === type.id) generatorMultiplier *= skill.value;
-                });
-                if (currentState.craftedArtifacts.includes('coal_engine') && type.id === 'cart') generatorMultiplier *= artifactTypes.find(a => a.id === 'coal_engine').value;
-
-                if (type.id === 'cart') {
-                    const minerCount = currentState.generators['miner'] || 0;
-                    const synergyBonus = 1 + (Math.floor(minerCount / 50) * 0.10);
-                    generatorMultiplier *= synergyBonus;
-                }
-                
-                if (type.id === 'miner' || type.id === 'cart') {
-                    const plantCount = currentState.generators['gold_panning_plant'] || 0;
-                    const synergyBonus = 1 + (plantCount * 0.05);
-                    generatorMultiplier *= synergyBonus;
-                }
-                
+                // Synergies & Specializations
+                if (type.id === 'cart') generatorMultiplier *= 1 + (Math.floor((currentState.generators['miner'] || 0) / 50) * 0.10);
+                if (type.id === 'miner' || type.id === 'cart') generatorMultiplier *= 1 + ((currentState.generators['gold_panning_plant'] || 0) * 0.05);
+                if ((type.id === 'miner' || type.id === 'cart') && currentState.purchasedSkills.includes('excavator_synergy')) generatorMultiplier *= skillTypes['excavator_synergy'].value;
                 const specialization = currentState.generatorSpecializations[type.id];
-                if (specialization === 'elite_miners') generatorMultiplier *= 1.5;
-                else if (specialization === 'iron_miners') generatorMultiplier *= 0.75;
+                if (specialization === 'elite_miners') generatorMultiplier *= 1.5; else if (specialization === 'iron_miners') generatorMultiplier *= 0.75;
                 
-                currentState.unlockedAchievements.forEach(achId => {
-                    const ach = achievementTypes[achId];
-                    if (ach.reward.type === 'generator_multiplier' && ach.reward.target === type.id) generatorMultiplier *= ach.reward.value;
-                });
-                
-                if ((type.id === 'miner' || type.id === 'cart') && currentState.purchasedSkills.includes('excavator_synergy')) {
-                    generatorMultiplier *= skillTypes['excavator_synergy'].value;
-                }
-
                 baseGps += generatorProduction * generatorMultiplier;
             }
         }
         
-        let goldPerSecond = (baseGps * totalGpsMultiplier * currentPrestigeBonus) * totalGoldMultiplierFromAscension * productionBoostEffect;
+        let goldPerSecond = (baseGps * totalGpsMultiplier * currentPrestigeBonus) * totalGoldMultiplierFromAscension * productionBoostEffect * temporaryGoldMultiplier;
         
         if (currentState.purchasedSkills.includes('compound_interest')) goldPerSecond += currentState.gold * skillTypes['compound_interest'].value;
-        
         const syndicateCount = currentState.generators['investment_syndicate'] || 0;
         if (syndicateCount > 0) {
-            let syndicateMultiplier = 1.0;
-            if(currentState.purchasedUpgrades.includes('insider_trading')) {
-                syndicateMultiplier = upgradeTypes.find(u => u.id === 'insider_trading').value;
-            }
+            let syndicateMultiplier = currentState.purchasedUpgrades.includes('insider_trading') ? upgradeTypes.find(u => u.id === 'insider_trading').value : 1.0;
             goldPerSecond += (currentState.gold * 0.0001 * syndicateCount * syndicateMultiplier);
         }
 
@@ -298,23 +307,15 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         const infinityUpgrades = gameState.purchasedInfinityUpgrades || {};
         const gemBoostLevel = infinityUpgrades.gem_boost || 0;
         const gemBoostEffect = infinityUpgradeTypes.gem_boost.effect(gemBoostLevel);
-        
-        let gemEffectiveness = 1.0;
-        if (gameState.purchasedAscensionUpgrades.includes('gem_mastery')) {
-            gemEffectiveness = ascensionUpgradeTypes['gem_mastery'].value;
-        }
-        
+        let gemEffectiveness = gameState.purchasedAscensionUpgrades.includes('gem_mastery') ? ascensionUpgradeTypes['gem_mastery'].value : 1.0;
         gemEffectiveness *= gemBoostEffect;
-
         return 1 + (gameState.prestigeGems * 0.05 * gemEffectiveness);
     }, [gameState.prestigeGems, gameState.purchasedAscensionUpgrades, gameState.purchasedInfinityUpgrades]);
-    
+
     const gemsToGain = useMemo(() => {
         if (gameState.gold < PRESTIGE_REQUIREMENT) return 0;
         let gems = Math.floor(Math.sqrt(gameState.gold / PRESTIGE_REQUIREMENT)) * 5;
-        if (gameState.purchasedSkills.includes('gem_hoarder_1')) {
-            gems += skillTypes['gem_hoarder_1'].value;
-        }
+        if (gameState.purchasedSkills.includes('gem_hoarder_1')) gems += skillTypes['gem_hoarder_1'].value;
         return Math.floor(gems);
     }, [gameState.gold, gameState.purchasedSkills]);
 
@@ -363,9 +364,10 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         return rps;
     }, [gameState.generators, gameState.generatorSpecializations, resourceFindingBonus, gameState.currentChallenge]);
 
+    // --- Lógica de Acciones del Jugador ---
     const handleManualClick = (e) => {
         if (gameState.currentChallenge === 'pacifist') {
-            return; // Bloquea el clic si el desafío está activo
+            return;
         }
         setIsMining(true);
         setTimeout(() => setIsMining(false), 150);
@@ -373,7 +375,9 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         let clickValue = goldPerClick;
         if (gameState.purchasedSkills.includes('critical_click')) {
             const skill = skillTypes['critical_click'];
-            if (Math.random() < skill.value) clickValue *= skill.multiplier;
+            if (Math.random() < skill.value) {
+                clickValue *= skill.multiplier;
+            }
         }
         
         if (gameState.purchasedSkills.includes('click_frenzy') && !gameState.goldRush.active) {
@@ -490,133 +494,93 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         setGameState(prev => ({ ...prev, celestialRelics: prev.celestialRelics - upgrade.cost, purchasedAscensionUpgrades: [...prev.purchasedAscensionUpgrades, upgradeId] }));
     };
 
-    const ascend = () => {
-        if (relicsToGain > 0 && window.confirm(`¿Quieres ascender por ${relicsToGain} Reliquias Celestiales? Tu progreso de prestigio (gemas, ciencia, habilidades) se reiniciará por completo.`)) {
-            setGameState(prev => {
-                const newState = getNewGameState();
-                newState.celestialRelics = prev.celestialRelics + relicsToGain;
-                newState.purchasedAscensionUpgrades = prev.purchasedAscensionUpgrades;
-                newState.craftedArtifacts = prev.craftedArtifacts;
-                newState.resources = prev.resources;
-                if (prev.purchasedAscensionUpgrades.includes('eternal_knowledge')) {
-                    newState.sciencePoints = ascensionUpgradeTypes['eternal_knowledge'].value;
-                }
-                newState.stats.ascensions = prev.stats.ascensions + 1;
-                newState.stats.totalGoldMined = prev.stats.totalGoldMined;
-                return newState;
-            });
-        }
-    };
-
     const craftArtifact = (artifactId) => {
         const artifact = artifactTypes.find(a => a.id === artifactId);
         if (!artifact || gameState.craftedArtifacts.includes(artifactId)) return;
-        for (const resourceId in artifact.cost) { if (gameState.resources[resourceId] < artifact.cost[resourceId]) return; }
+        for (const resourceId in artifact.cost) { if ((gameState.resources[resourceId] || 0) < artifact.cost[resourceId]) return; }
         setGameState(prev => {
             const newResources = { ...prev.resources };
             for (const resourceId in artifact.cost) { newResources[resourceId] -= artifact.cost[resourceId]; }
             return { ...prev, resources: newResources, craftedArtifacts: [...prev.craftedArtifacts, artifactId] };
         });
     };
+    
+    const prestige = () => showConfirmation(`¿Quieres hacer prestigio por ${gemsToGain} gemas y ${scienceToGain} Puntos de Ciencia?`, () => {
+        setGameState(prev => {
+            const newState = getNewGameState();
+            newState.prestigeGems = prev.prestigeGems + gemsToGain;
+            newState.sciencePoints = prev.sciencePoints + scienceToGain;
+            if (prev.purchasedAscensionUpgrades.includes('eternal_knowledge')) newState.sciencePoints += ascensionUpgradeTypes['eternal_knowledge'].value;
+            newState.purchasedSkills = prev.purchasedSkills;
+            newState.craftedArtifacts = prev.craftedArtifacts;
+            newState.resources = prev.resources;
+            newState.celestialRelics = prev.celestialRelics;
+            newState.purchasedAscensionUpgrades = prev.purchasedAscensionUpgrades;
+            newState.generatorSpecializations = prev.generatorSpecializations;
+            newState.stats = { ...prev.stats, prestiges: prev.stats.prestiges + 1, totalGoldMined: prev.stats.totalGoldMined };
+            newState.activeMissions = initializeMissions();
+            return newState;
+        });
+        addToast("¡Prestigio completado!", "success");
+    });
+    
+    const ascend = () => showConfirmation(`¿Quieres ascender por ${relicsToGain} Reliquias Celestiales? Tu progreso de prestigio se reiniciará.`, () => {
+        setGameState(prev => {
+            const newState = getNewGameState();
+            newState.celestialRelics = prev.celestialRelics + relicsToGain;
+            newState.purchasedAscensionUpgrades = prev.purchasedAscensionUpgrades;
+            newState.craftedArtifacts = prev.craftedArtifacts;
+            newState.resources = prev.resources;
+            if (prev.purchasedAscensionUpgrades.includes('eternal_knowledge')) newState.sciencePoints = ascensionUpgradeTypes['eternal_knowledge'].value;
+            newState.stats = { ...prev.stats, ascensions: prev.stats.ascensions + 1, totalGoldMined: prev.stats.totalGoldMined };
+            newState.activeMissions = initializeMissions();
+            return newState;
+        });
+        addToast("¡Has ascendido a un nuevo plano!", "success");
+    });
 
-    const prestige = () => {
-        if (gemsToGain > 0 && window.confirm(`¿Quieres hacer prestigio por ${gemsToGain} gemas y ${scienceToGain} Puntos de Ciencia? Tu progreso actual se reiniciará.`)) {
-            setGameState(prev => {
-                const newState = getNewGameState();
-                newState.prestigeGems = prev.prestigeGems + gemsToGain;
-                newState.sciencePoints = prev.sciencePoints + scienceToGain;
-                if (prev.purchasedAscensionUpgrades.includes('eternal_knowledge')) {
-                    newState.sciencePoints += ascensionUpgradeTypes['eternal_knowledge'].value;
-                }
-                newState.purchasedSkills = prev.purchasedSkills;
-                newState.craftedArtifacts = prev.craftedArtifacts;
-                newState.resources = prev.resources;
-                newState.celestialRelics = prev.celestialRelics;
-                newState.purchasedAscensionUpgrades = prev.purchasedAscensionUpgrades;
-                newState.generatorSpecializations = prev.generatorSpecializations;
-                newState.stats = { ...prev.stats, prestiges: prev.stats.prestiges + 1 };
-                newState.stats.totalGoldMined = prev.stats.totalGoldMined;
-                return newState;
-            });
-        }
-    };
-
-    const hardReset = async () => {
-        if (window.confirm("¿Estás seguro de que quieres reiniciar TODO tu progreso? Se perderán incluso las gemas, la ciencia y las reliquias.")) {
-            const newGame = getNewGameState();
-            setGameState(newGame);
-            const gameDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/gameData`, 'progress');
-            await setDoc(gameDocRef, newGame);
-            const rankingDocRef = doc(db, `artifacts/${appId}/public/data/rankings`, user.uid);
-            await setDoc(rankingDocRef, { email: user.email, totalGoldMined: 0 });
-        }
-    };
-
+    const hardReset = () => showConfirmation("¿Estás seguro de que quieres reiniciar TODO tu progreso? Esta acción es irreversible.", async () => {
+        const newGame = getNewGameState();
+        newGame.activeMissions = initializeMissions();
+        setGameState(newGame);
+        const gameDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/gameData`, 'progress');
+        await setDoc(gameDocRef, newGame);
+        const rankingDocRef = doc(db, `artifacts/${appId}/public/data/rankings`, user.uid);
+        await setDoc(rankingDocRef, { email: user.email, totalGoldMined: 0 });
+        addToast("El juego ha sido reiniciado.", "warning");
+    });
+    
     const infinityReset = () => {
         const pointsToGain = Math.floor(Math.log10(gameState.stats.totalGoldMined || 1) / 3 - 4);
         if (pointsToGain <= 0 || gameState.stats.totalGoldMined < INFINITY_REQUIREMENT) return;
-
-        if (window.confirm(`¿Estás seguro? Esto reiniciará TODO tu progreso (oro, gemas, ciencia, reliquias, etc.) a cambio de ${formatNumber(pointsToGain)} Puntos de Infinito.`)) {
-            setGameState(prev => {
+        showConfirmation(`Esto reiniciará TODO a cambio de ${formatNumber(pointsToGain)} Puntos de Infinito.`, () => {
+             setGameState(prev => {
                 const scienceStartLevel = prev.purchasedInfinityUpgrades.science_start || 0;
                 const startingScience = infinityUpgradeTypes.science_start.effect(scienceStartLevel);
                 const newGame = getNewGameState();
-                return {
-                    ...newGame,
-                    infinityPoints: prev.infinityPoints + pointsToGain,
-                    purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades,
-                    completedChallenges: prev.completedChallenges,
-                    sciencePoints: startingScience,
-                    stats: {
-                        ...newGame.stats,
-                        totalGoldMined: prev.stats.totalGoldMined // Preserve for future calculations
-                    }
-                };
+                newGame.activeMissions = initializeMissions();
+                return { ...newGame, infinityPoints: prev.infinityPoints + pointsToGain, purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades, completedChallenges: prev.completedChallenges, sciencePoints: startingScience, stats: { ...newGame.stats, totalGoldMined: prev.stats.totalGoldMined } };
             });
-        }
+            addToast("¡Has alcanzado el infinito!", "success");
+        });
     };
 
-    const startChallenge = (challengeId) => {
-        if (gameState.currentChallenge || gameState.completedChallenges.includes(challengeId)) return;
-        if (window.confirm(`¿Iniciar desafío "${challengeTypes[challengeId].name}"? Tu progreso se reiniciará con reglas especiales.`)) {
-            setGameState(prev => {
-                const newGame = getNewGameState();
-                return {
-                    ...newGame,
-                    currentChallenge: challengeId,
-                    challengeStartTime: Date.now(),
-                    // Mantener el progreso de infinito
-                    infinityPoints: prev.infinityPoints,
-                    purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades,
-                    completedChallenges: prev.completedChallenges,
-                    stats: {
-                        ...newGame.stats,
-                        totalGoldMined: prev.stats.totalGoldMined
-                    }
-                };
-            });
-        }
-    };
+    const startChallenge = (challengeId) => showConfirmation(`¿Iniciar desafío "${challengeTypes[challengeId].name}"? Tu progreso se reiniciará con reglas especiales.`, () => {
+        setGameState(prev => {
+            const newGame = getNewGameState();
+            newGame.activeMissions = initializeMissions();
+            return { ...newGame, currentChallenge: challengeId, challengeStartTime: Date.now(), infinityPoints: prev.infinityPoints, purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades, completedChallenges: prev.completedChallenges, stats: { ...newGame.stats, totalGoldMined: prev.stats.totalGoldMined } };
+        });
+    });
 
-    const abandonChallenge = () => {
-        if (!gameState.currentChallenge) return;
-        if (window.confirm("¿Seguro que quieres abandonar el desafío? Tu progreso en este desafío se perderá.")) {
-            setGameState(prev => {
-                const newGame = getNewGameState();
-                return {
-                    ...newGame,
-                    // Mantener el progreso de infinito
-                    infinityPoints: prev.infinityPoints,
-                    purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades,
-                    completedChallenges: prev.completedChallenges,
-                    stats: {
-                        ...newGame.stats,
-                        totalGoldMined: prev.stats.totalGoldMined
-                    }
-                };
-            });
-        }
-    };
+    const abandonChallenge = () => showConfirmation("¿Seguro que quieres abandonar el desafío? Tu progreso en este desafío se perderá.", () => {
+        setGameState(prev => {
+            const newGame = getNewGameState();
+            newGame.activeMissions = initializeMissions();
+            return { ...newGame, infinityPoints: prev.infinityPoints, purchasedInfinityUpgrades: prev.purchasedInfinityUpgrades, completedChallenges: prev.completedChallenges, stats: { ...newGame.stats, totalGoldMined: prev.stats.totalGoldMined } };
+        });
+        addToast("Desafío abandonado.", "info");
+    });
 
     const buyInfinityUpgrade = (upgradeId) => {
         const upgrade = infinityUpgradeTypes[upgradeId];
@@ -635,29 +599,8 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             }));
         }
     };
-
-    const activateGoldRush = () => {
-        if (gameState.goldRush.cooldown > 0) return;
-        setGameState(prev => ({ ...prev, goldRush: { active: true, timeLeft: GOLD_RUSH.DURATION, cooldown: GOLD_RUSH.COOLDOWN } }));
-    };
-
-    const handleClickable = (clickableId) => {
-        const clickable = gameState.activeClickables.find(c => c.id === clickableId);
-        if (!clickable) return;
-        if (clickable.type === 'nugget') {
-            const goldReward = goldPerSecond * 15;
-            setGameState(prev => ({ 
-                ...prev, 
-                gold: prev.gold + goldReward,
-                stats: {
-                    ...prev.stats,
-                    totalGoldMined: (prev.stats.totalGoldMined || 0) + goldReward
-                }
-            }));
-        }
-        setGameState(prev => ({ ...prev, activeClickables: prev.activeClickables.filter(c => c.id !== clickableId) }));
-    };
     
+    // --- Lógica de Juego (Tick, Guardado, etc.) ---
     useEffect(() => {
         const loadedState = { ...initialGameState };
         const { goldPerSecond: loadedGps } = recalculateValues(loadedState);
@@ -709,7 +652,6 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             setGameState(prev => {
                  let newState = { ...prev };
 
-                 // --- Lógica del desafío ---
                  if (newState.currentChallenge) {
                     const challenge = challengeTypes[newState.currentChallenge];
                     let challengeCompleted = false;
@@ -717,7 +659,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                     if (challenge.timeLimit) {
                         const timeElapsed = (Date.now() - newState.challengeStartTime) / 1000;
                         if (timeElapsed > challenge.timeLimit) {
-                            alert(`Desafío "${challenge.name}" fallido: se acabó el tiempo.`);
+                            addToast(`Desafío "${challenge.name}" fallido: se acabó el tiempo.`, "error");
                              const freshGame = getNewGameState();
                              return {
                                  ...freshGame,
@@ -734,7 +676,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                     }
 
                     if (challengeCompleted) {
-                        alert(`¡Desafío "${challenge.name}" completado! Recompensa: ${challenge.reward} Puntos de Infinito.`);
+                        addToast(`¡Desafío "${challenge.name}" completado! Recompensa: ${challenge.reward} Puntos de Infinito.`, "success");
                         const newCompleted = [...newState.completedChallenges, newState.currentChallenge];
                         const newPoints = newState.infinityPoints + challenge.reward;
                         const freshGame = getNewGameState();
@@ -747,7 +689,6 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                         };
                     }
                 }
-
 
                  newState.resources = { ...prev.resources };
                  newState.purchasedUpgrades = [...prev.purchasedUpgrades];
@@ -820,7 +761,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         }, 10000);
 
         return () => { clearInterval(gameTick); clearInterval(clickableInterval); };
-    }, [resourcesPerSecond, recalculateValues]);
+    }, [resourcesPerSecond, recalculateValues, addToast]);
 
     useEffect(() => {
         const saveInterval = setInterval(async () => {
@@ -845,15 +786,18 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
     const tabConfig = {
         research: { name: 'Investigación', icon: 'research', color: 'cyan' },
         ranking: { name: 'Ranking', icon: 'ranking', color: 'green' },
+        missions: { name: 'Misiones', icon: 'missions', color: 'indigo' },
+        achievements: { name: 'Logros', icon: 'achievements', color: 'yellow' },
+        crafting: { name: 'Fabricación', icon: 'crafting', color: 'orange' },
         ascension: { name: 'Celestiales', icon: 'ascension', color: 'amber' },
         infinity: { name: 'Infinito', icon: 'infinity', color: 'pink' },
-        achievements: { name: 'Logros', icon: 'achievements', color: 'yellow' },
-        missions: { name: 'Misiones', icon: 'missions', color: 'indigo' },
-        crafting: { name: 'Fabricación', icon: 'crafting', color: 'orange' },
+        settings: { name: 'Ajustes', icon: 'settings', color: 'gray' },
     };
 
     return (
         <>
+            <NotificationComponent toasts={toasts} removeToast={(id) => setToasts(t => t.filter(toast => toast.id !== id))} />
+            <ConfirmationModal isOpen={confirmation.isOpen} message={confirmation.message} onConfirm={confirmation.onConfirm} onCancel={closeConfirmation} />
             <SpecializationModal choice={specializationChoice} onSelect={selectSpecialization} />
             <FloatingNumbers numbers={floatingNumbers} />
             {offlineEarnings && <OfflineModal earnings={offlineEarnings} onClose={() => setOfflineEarnings(null)} />}
@@ -943,7 +887,6 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-gray-300">Prestigio</h2><div className="bg-purple-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia para obtener Gemas y Puntos de Ciencia.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{formatNumber(PRESTIGE_REQUIREMENT)}</span> Oro</p><button onClick={prestige} disabled={gemsToGain <= 0} className={`w-full bg-purple-600 text-white font-bold py-3 px-5 rounded-lg transition ${gemsToGain > 0 ? 'hover:bg-purple-700 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Prestigio por +{formatNumber(gemsToGain)} Gemas y +{formatNumber(scienceToGain)} Ciencia</button></div></div>
                             <div className="space-y-2"><h2 className="text-2xl font-bold text-center text-amber-300">Ascensión</h2><div className="bg-amber-900/40 p-4 rounded-lg text-center space-y-2"><p className="text-gray-300 text-sm">Reinicia todo (incl. gemas) para obtener Reliquias Celestiales.</p><p className="text-gray-400 text-sm">Requisito: <span className="font-bold text-white">{formatNumber(ASCENSION_REQUIREMENT)}</span> Gemas</p><button onClick={ascend} disabled={relicsToGain <= 0} className={`w-full bg-amber-500 text-black font-bold py-3 px-5 rounded-lg transition ${relicsToGain > 0 ? 'hover:bg-amber-600 active:scale-95' : 'opacity-50 cursor-not-allowed'}`}>Ascender por +{relicsToGain} Reliquias 🌟</button></div></div>
                         </div>
-                        <div className="pt-4 border-t border-gray-700"><button onClick={hardReset} className="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-2 px-4 rounded-lg transition active:scale-95">Reiniciar Partida (Hard Reset)</button></div>
                     </div>
                     <div className="lg:col-span-1 space-y-6 lg:h-fit lg:sticky top-4">
                         <div className="bg-gray-800/60 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 space-y-4 border border-gray-700">
@@ -965,7 +908,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                             )}
                             
                             {activeTab === 'missions' && (
-                                <MissionsComponent missions={gameState.missions} onClaimMission={() => {}} />
+                                <MissionsComponent missions={gameState.activeMissions} onClaimMission={handleClaimMission} />
                             )}
 
                             {activeTab === 'research' && (
@@ -1019,12 +962,16 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
                             {activeTab === 'crafting' && (
                                 <div>
                                     <div className="grid grid-cols-3 gap-4 text-center mb-4">{resourceTypes.map(res => (<div key={res.id} className="bg-gray-900 p-2 rounded-lg"><div className="text-2xl">{res.icon}</div><div className="text-sm font-bold">{formatNumber(gameState.resources[res.id] || 0)}</div></div>))}</div>
-                                    <div className="space-y-3">{artifactTypes.map(artifact => { const isCrafted = gameState.craftedArtifacts.includes(artifact.id); const canAfford = Object.entries(artifact.cost).every(([resId, cost]) => gameState.resources[resId] >= cost); return (<div key={artifact.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isCrafted ? 'bg-orange-900/50 border-orange-700/80' : 'bg-gray-700/50 border-gray-600'}`}><div className="flex-grow"><h4 className="font-semibold text-orange-300">{artifact.name}</h4><p className="text-xs text-gray-400 mt-1">{artifact.description}</p></div><div className="text-xs text-gray-400 mt-2">Costo: {Object.entries(artifact.cost).map(([resId, cost]) => `${formatNumber(cost)} ${resourceTypes.find(r=>r.id===resId).name}`).join(', ')}</div><button onClick={() => craftArtifact(artifact.id)} disabled={isCrafted || !canAfford} className={`w-full mt-3 bg-orange-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isCrafted ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-orange-700 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isCrafted ? 'Fabricado' : 'Fabricar'}</button></div>);})}</div>
+                                    <div className="space-y-3">{artifactTypes.map(artifact => { const isCrafted = gameState.craftedArtifacts.includes(artifact.id); const canAfford = Object.entries(artifact.cost).every(([resId, cost]) => (gameState.resources[resId] || 0) >= cost); return (<div key={artifact.id} className={`p-3 rounded-lg border flex flex-col transition-all ${isCrafted ? 'bg-orange-900/50 border-orange-700/80' : 'bg-gray-700/50 border-gray-600'}`}><div className="flex-grow"><h4 className="font-semibold text-orange-300">{artifact.name}</h4><p className="text-xs text-gray-400 mt-1">{artifact.description}</p></div><div className="text-xs text-gray-400 mt-2">Costo: {Object.entries(artifact.cost).map(([resId, cost]) => `${formatNumber(cost)} ${resourceTypes.find(r=>r.id===resId).name}`).join(', ')}</div><button onClick={() => craftArtifact(artifact.id)} disabled={isCrafted || !canAfford} className={`w-full mt-3 bg-orange-600 font-bold py-2 px-4 rounded-lg text-sm transition ${isCrafted ? 'bg-gray-600 opacity-70 cursor-not-allowed' : canAfford ? 'hover:bg-orange-700 active:scale-95 can-afford' : 'opacity-50 cursor-not-allowed'}`}>{isCrafted ? 'Fabricado' : 'Fabricar'}</button></div>);})}</div>
                                 </div>
+                            )}
+
+                             {activeTab === 'settings' && (
+                                <SettingsComponent onHardReset={hardReset} />
                             )}
                         </div>
                     </div>
-                </div>
+                 </div>
             </div>
         </>
     );

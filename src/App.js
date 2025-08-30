@@ -14,12 +14,13 @@ import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 // Importaciones de los componentes
 import GameComponent from './components/GameComponent';
 import AuthComponent from './components/AuthComponent';
-import { getNewGameState } from './utils';
+import { getNewGameState, initializeMissions } from './utils';
 
 // --- Configuración de Firebase ---
 let app, auth, db;
 try {
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+        // Fallback config for local development
         apiKey: "AIzaSyDW9F3WKfZTlSOzILrkKSUAmmfQlRajVVg",
         authDomain: "gold-miner-idle-dev.firebaseapp.com",
         projectId: "gold-miner-idle-dev",
@@ -50,48 +51,42 @@ export default function App() {
         };
         
         const setupAuthenticationAndLoadData = async () => {
-            // 1. Configurar el listener de estado de autenticación
             const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
                 if (currentUser) {
                     setUser(currentUser);
                     setAuthError(null);
-                    // 2. Cargar los datos del juego una vez que el usuario está autenticado
                     const gameDocRef = doc(db, `artifacts/${appId}/users/${currentUser.uid}/gameData`, 'progress');
                     const docSnap = await getDoc(gameDocRef);
                     let gameStateForUser;
                     const newGameTemplate = getNewGameState();
+                     if (!newGameTemplate.activeMissions || newGameTemplate.activeMissions.length === 0) {
+                        newGameTemplate.activeMissions = initializeMissions();
+                    }
+
 
                     if (docSnap.exists()) {
                         const savedData = docSnap.data();
-                        // Fusiona los datos guardados con la plantilla para asegurar que todos los campos nuevos estén presentes
+                        // Fusiona inteligentemente los datos guardados con la plantilla
                         gameStateForUser = { 
                             ...newGameTemplate, 
                             ...savedData,
-                            stats: { // Fusiona explícitamente objetos anidados para evitar sobrescribirlos
-                                ...newGameTemplate.stats,
-                                ...(savedData.stats || {}),
-                            },
-                             resources: {
-                                ...newGameTemplate.resources,
-                                ...(savedData.resources || {}),
-                            },
-                            purchasedInfinityUpgrades: {
-                                ...newGameTemplate.purchasedInfinityUpgrades,
-                                ...(savedData.purchasedInfinityUpgrades || {}),
-                            }
+                            stats: { ...newGameTemplate.stats, ...(savedData.stats || {}), },
+                            resources: { ...newGameTemplate.resources, ...(savedData.resources || {}), },
+                            purchasedInfinityUpgrades: { ...newGameTemplate.purchasedInfinityUpgrades, ...(savedData.purchasedInfinityUpgrades || {}), },
+                            // Asegurar que las misiones existan
+                            activeMissions: savedData.activeMissions && savedData.activeMissions.length > 0 ? savedData.activeMissions : initializeMissions(),
                         };
                     } else {
                         gameStateForUser = newGameTemplate;
                         await setDoc(gameDocRef, gameStateForUser);
                     }
-
+                    
                     if (!gameStateForUser.stats.totalGoldMined) {
                         gameStateForUser.stats.totalGoldMined = 0;
                     }
 
                     setInitialGameState(gameStateForUser);
 
-                    // 3. Crear o actualizar el ranking del usuario
                     const rankingDocRef = doc(db, `artifacts/${appId}/public/data/rankings`, currentUser.uid);
                     await setDoc(rankingDocRef, {
                         email: currentUser.email || `anon-${currentUser.uid.substring(0,6)}`,
@@ -105,7 +100,6 @@ export default function App() {
                 setLoading(false);
             });
 
-            // 4. Intentar la autenticación automática
             try {
                 if (auth.currentUser) {
                     setLoading(false);
@@ -114,17 +108,11 @@ export default function App() {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
-                    // No intentar el inicio de sesión anónimo si no hay token, 
-                    // en su lugar, mostrar el componente de autenticación.
                     setLoading(false);
                 }
             } catch (error) {
                 console.error("Fallo la autenticación automática:", error);
-                if (error.code === 'auth/admin-restricted-operation') {
-                    setAuthError("El inicio de sesión anónimo no está habilitado. Por favor, inicia sesión.");
-                } else {
-                    setAuthError(error.message);
-                }
+                setAuthError(error.message);
                 setLoading(false);
             }
 
@@ -136,7 +124,6 @@ export default function App() {
     }, [appId]);
     
     useEffect(() => {
-        // Carga de Tailwind CSS
         const scriptId = 'tailwind-script';
         if (!document.getElementById(scriptId)) {
             const script = document.createElement('script');
@@ -146,7 +133,6 @@ export default function App() {
             document.head.appendChild(script);
         }
 
-        // Carga de Google Fonts
         const fontLinkId = 'google-font-link';
         if (!document.getElementById(fontLinkId)) {
             const link = document.createElement('link');
