@@ -408,6 +408,84 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
         setTimeout(() => setFloatingNumbers(current => current.filter(n => n.id !== newFloatingNumber.id)), 1000);
     };
 
+    const activateGoldRush = () => {
+        if (gameState.goldRush.cooldown > 0 || gameState.goldRush.active) return;
+        setGameState(prev => ({ ...prev, goldRush: { active: true, timeLeft: GOLD_RUSH.DURATION, cooldown: GOLD_RUSH.COOLDOWN } }));
+    };
+
+    const handleClickable = (clickableId) => {
+        const clickable = gameState.activeClickables.find(c => c.id === clickableId);
+        if (!clickable) return;
+        if (clickable.type === 'nugget') {
+            const goldReward = goldPerSecond * 15;
+            setGameState(prev => ({ 
+                ...prev, 
+                gold: prev.gold + goldReward,
+                stats: {
+                    ...prev.stats,
+                    totalGoldMined: (prev.stats.totalGoldMined || 0) + goldReward
+                }
+            }));
+        }
+        setGameState(prev => ({ ...prev, activeClickables: prev.activeClickables.filter(c => c.id !== clickableId) }));
+    };
+
+    const handleClaimMission = (missionId) => {
+        setGameState(prev => {
+            const mission = prev.activeMissions.find(m => m.id === missionId);
+            if (!mission) return prev;
+
+            const progress = mission.progress >= mission.target;
+            if (!progress) return prev;
+
+            let newState = { ...prev };
+            const missionTypeData = missionTypes[mission.type];
+            const reward = missionTypeData.reward(mission.tier);
+
+            switch (reward.type) {
+                case 'gems':
+                    newState.prestigeGems += reward.value;
+                    break;
+                case 'science':
+                    newState.sciencePoints += reward.value;
+                    break;
+                case 'gold_multiplier':
+                    newState.temporaryBoosts = {
+                        ...newState.temporaryBoosts,
+                        [`mission_${missionId}`]: {
+                            type: 'gold_multiplier',
+                            value: reward.value,
+                            endTime: Date.now() + (reward.duration * 1000)
+                        }
+                    };
+                    break;
+                default:
+                    break;
+            }
+
+            addToast(`¡Misión completada! Recompensa: ${mission.rewardDescription}`, "success");
+
+            const nextTier = mission.tier + 1;
+            if (nextTier < missionTypeData.tiers.length) {
+                const newMission = {
+                    ...mission,
+                    id: `${mission.type}_${mission.targetGenerator ? mission.targetGenerator + '_' : ''}${nextTier}`,
+                    tier: nextTier,
+                    target: missionTypeData.tiers[nextTier],
+                    progress: 0,
+                    description: missionTypeData.description(missionTypeData.tiers[nextTier], generatorTypes.find(g => g.id === mission.targetGenerator)?.name),
+                    rewardDescription: missionTypeData.rewardDescription(nextTier)
+                };
+                newState.activeMissions = newState.activeMissions.map(m => m.id === missionId ? newMission : m);
+            } else {
+                newState.activeMissions = newState.activeMissions.filter(m => m.id !== missionId);
+            }
+
+            return newState;
+        });
+    };
+    
+    // --- Lógica de Compra ---
     const calculateGeneratorCost = useCallback((generatorId, amount) => {
         const generator = generatorTypes.find(g => g.id === generatorId);
         const count = gameState.generators[generatorId] || 0;
@@ -466,7 +544,7 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
             }
         }
     };
-
+    
     const selectSpecialization = (generatorId, specializationId) => {
         setGameState(prev => ({ ...prev, generatorSpecializations: { ...prev.generatorSpecializations, [generatorId]: specializationId } }));
         setSpecializationChoice(null);
@@ -978,4 +1056,3 @@ const GameComponent = ({ user, initialGameState, db, auth, appId }) => {
 };
 
 export default GameComponent;
-
